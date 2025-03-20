@@ -1,0 +1,191 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type             String
+  provider         String
+  providerAccountId String
+  refresh_token    String? @db.Text
+  access_token     String? @db.Text
+  expires_at       Int?
+  token_type       String?
+  scope            String?
+  id_token         String? @db.Text
+  session_state    String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  password      String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  accounts      Account[]
+  sessions      Session[]
+  projects      Project[]
+}
+
+model Project {
+  id          Int           @id @default(autoincrement())
+  name        String
+  description String?
+  status      String        @default("Not Started")
+  startDate   DateTime?
+  endDate     DateTime?
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String
+  tasks       Task[]
+  plans       Plan[]
+  events      Event[]
+  bids        Bid[]
+  takeoffs    Takeoff[]
+  invoices    Invoice[]
+  budgets     Budget[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+}
+
+model Task {
+  id          Int       @id @default(autoincrement())
+  title       String
+  description String?
+  status      String    @default("Todo")
+  dueDate     DateTime?
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId   Int
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Plan {
+  id          Int       @id @default(autoincrement())
+  title       String
+  description String?
+  fileUrl     String
+  fileType    String
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId   Int
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Event {
+  id          Int       @id @default(autoincrement())
+  title       String
+  description String?
+  startDate   DateTime
+  endDate     DateTime?
+  status      String    @default("Scheduled")
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId   Int
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Bid {
+  id              Int       @id @default(autoincrement())
+  title           String
+  description     String?
+  contractorName  String
+  contractorEmail String
+  amount          Float
+  status          String    @default("Pending") // Pending, Accepted, Rejected
+  submissionDate  DateTime  @default(now())
+  validUntil      DateTime?
+  notes           String?
+  project         Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId       Int
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+model Takeoff {
+  id          Int           @id @default(autoincrement())
+  title       String
+  description String?
+  category    String        // e.g., "Concrete", "Electrical", "Plumbing"
+  status      String        @default("In Progress") // In Progress, Completed, Verified
+  items       TakeoffItem[]
+  project     Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId   Int
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+}
+
+model TakeoffItem {
+  id          Int      @id @default(autoincrement())
+  description String
+  quantity    Float
+  unit        String   // e.g., "SF", "LF", "EA", "CY"
+  unitPrice   Float?
+  notes       String?
+  location    String?  // e.g., "First Floor", "Building A", "Room 101"
+  takeoff     Takeoff  @relation(fields: [takeoffId], references: [id], onDelete: Cascade)
+  takeoffId   Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Invoice {
+  id          Int      @id @default(autoincrement())
+  division    String   // Division code (e.g., "01", "02", etc.)
+  vendor      String
+  amount      Float
+  date        DateTime
+  description String?
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId   Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Budget {
+  id              Int              @id @default(autoincrement())
+  totalAmount     Float
+  project         Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId       Int              @unique // One budget per project
+  divisionBudgets DivisionBudget[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+}
+
+model DivisionBudget {
+  id          Int      @id @default(autoincrement())
+  division    String   // Division code (e.g., "01", "02", etc.)
+  amount      Float
+  budget      Budget   @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  budgetId    Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([budgetId, division]) // Each division can only have one budget per project
+}
