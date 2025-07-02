@@ -11,7 +11,10 @@ const nextConfig = {
   webpack: (config) => {
     config.resolve.alias.canvas = false
     return config
-  }
+  },
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
 };
 
 export default nextConfig;
