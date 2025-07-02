@@ -1,10 +1,13 @@
 "use client"
 
-import { useState } from "react"
+import { useState, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 
-export default function ResetPassword() {
+// Force dynamic rendering
+export const dynamic = 'force-dynamic'
+
+function ResetPasswordContent() {
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
   const [message, setMessage] = useState("")
@@ -96,6 +99,14 @@ export default function ResetPassword() {
         </div>
       </form>
     </div>
+  )
+}
+
+export default function ResetPassword() {
+  return (
+    <Suspense fallback={<div className="container mx-auto p-4">Loading...</div>}>
+      <ResetPasswordContent />
+    </Suspense>
   )
 }
 

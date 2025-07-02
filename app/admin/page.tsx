@@ -1,8 +1,7 @@
-"use client"
-
-import { useState } from "react"
+import { auth } from "@/lib/auth"
 import { redirect } from "next/navigation"
-import Link from "next/link"
+
+export const dynamic = 'force-dynamic'
 
 export default async function AdminPage() {
   const session = await auth()

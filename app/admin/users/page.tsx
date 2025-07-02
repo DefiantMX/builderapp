@@ -7,6 +7,9 @@ import { useAuth } from "../../contexts/AuthContext"
 import { UserRole, users } from "@/lib/permissions"
 import { ArrowLeft, Edit, Trash2, Shield, Mail } from "lucide-react"
 
+// Force dynamic rendering
+export const dynamic = 'force-dynamic'
+
 export default function ManageUsers() {
   const { user } = useAuth()
   const router = useRouter()
@@ -32,6 +35,11 @@ export default function ManageUsers() {
   }
 
   if (loading) {
+    return <div className="container mx-auto p-4">Loading...</div>
+  }
+
+  // Add null check for user
+  if (!user) {
     return <div className="container mx-auto p-4">Loading...</div>
   }
 

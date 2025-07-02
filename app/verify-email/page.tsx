@@ -1,10 +1,13 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 
-export default function VerifyEmail() {
+// Force dynamic rendering
+export const dynamic = 'force-dynamic'
+
+function VerifyEmailContent() {
   const [message, setMessage] = useState("")
   const [error, setError] = useState("")
   const router = useRouter()
@@ -44,6 +47,14 @@ export default function VerifyEmail() {
         Go to Login
       </Link>
     </div>
+  )
+}
+
+export default function VerifyEmail() {
+  return (
+    <Suspense fallback={<div className="container mx-auto p-4">Loading...</div>}>
+      <VerifyEmailContent />
+    </Suspense>
   )
 }
 
