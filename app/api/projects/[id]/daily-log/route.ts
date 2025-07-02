@@ -1,50 +1,102 @@
 import { NextResponse } from "next/server"
-import { writeFile } from "fs/promises"
-import path from "path"
+import { auth } from "@/lib/auth"
+import { db } from "@/lib/db"
 
-// This is a mock database. In a real application, you'd use a proper database.
-const dailyLogs: any[] = []
+export async function GET(
+  req: Request,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const session = await auth()
+    
+    if (!session?.user?.id) {
+      return new NextResponse("Unauthorized", { status: 401 })
+    }
 
-export async function GET(request: Request, { params }: { params: { id: string } }) {
-  const projectLogs = dailyLogs.filter((log) => log.projectId === params.id)
-  return NextResponse.json(projectLogs)
+    const project = await db.project.findUnique({
+      where: {
+        id: params.id,
+        userId: session.user.id
+      },
+      include: {
+        dailyLogs: {
+          orderBy: {
+            date: 'desc'
+          }
+        }
+      }
+    })
+
+    if (!project) {
+      return new NextResponse("Project not found", { status: 404 })
+    }
+
+    return NextResponse.json(project.dailyLogs)
+  } catch (error) {
+    console.error("[DAILY_LOG_GET]", error)
+    return new NextResponse("Internal Error", { status: 500 })
+  }
 }
 
-export async function POST(request: Request, { params }: { params: { id: string } }) {
-  const formData = await request.formData()
-  const content = formData.get("content") as string
-  const author = formData.get("author") as string
-  const currentConditions = formData.get("currentConditions") as string
-  const incidentReport = formData.get("incidentReport") as string
-  const image = formData.get("image") as File | null
+export async function POST(
+  req: Request,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const session = await auth()
+    
+    if (!session?.user?.id) {
+      return new NextResponse("Unauthorized", { status: 401 })
+    }
 
-  if (!content || !author || !currentConditions) {
-    return NextResponse.json({ message: "Content, author, and current conditions are required" }, { status: 400 })
+    const formData = await req.formData()
+    const content = formData.get("content") as string
+    const author = formData.get("author") as string
+    const currentConditions = formData.get("currentConditions") as string
+    const incidentReport = formData.get("incidentReport") as string
+    const image = formData.get("image") as File | null
+
+    if (!content || !author || !currentConditions) {
+      return new NextResponse("Missing required fields", { status: 400 })
+    }
+
+    // Verify project ownership
+    const project = await db.project.findUnique({
+      where: {
+        id: params.id,
+        userId: session.user.id
+      }
+    })
+
+    if (!project) {
+      return new NextResponse("Project not found", { status: 404 })
+    }
+
+    // Handle image upload if present
+    let imageUrl: string | undefined
+    if (image) {
+      // TODO: Implement image upload to storage service
+      // For now, we'll just store the image name
+      imageUrl = `/uploads/${image.name}`
+    }
+
+    // Create the daily log entry
+    const dailyLog = await db.dailyLog.create({
+      data: {
+        content,
+        author,
+        currentConditions,
+        incidentReport,
+        imageUrl,
+        date: new Date(),
+        projectId: params.id
+      }
+    })
+
+    return NextResponse.json(dailyLog)
+  } catch (error) {
+    console.error("[DAILY_LOG_POST]", error)
+    return new NextResponse("Internal Error", { status: 500 })
   }
-
-  let imageUrl = null
-  if (image) {
-    const bytes = await image.arrayBuffer()
-    const buffer = Buffer.from(bytes)
-    const fileName = `${Date.now()}_${image.name}`
-    const filePath = path.join(process.cwd(), "public", "uploads", fileName)
-    await writeFile(filePath, buffer)
-    imageUrl = `/uploads/${fileName}`
-  }
-
-  const newEntry = {
-    id: dailyLogs.length + 1,
-    projectId: params.id,
-    date: new Date().toISOString(),
-    content,
-    author,
-    currentConditions,
-    incidentReport,
-    imageUrl,
-  }
-
-  dailyLogs.push(newEntry)
-
-  return NextResponse.json(newEntry, { status: 201 })
 }
 

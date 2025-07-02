@@ -25,6 +25,8 @@ type Measurement = {
   value: number
   unit: string
   points: { x: number; y: number }[]
+  materialType?: string
+  pricePerUnit?: number
 }
 
 export default function ProjectTakeoff({ params }: { params: { id: string } }) {
@@ -35,6 +37,7 @@ export default function ProjectTakeoff({ params }: { params: { id: string } }) {
   const [error, setError] = useState("")
   const [uploading, setUploading] = useState(false)
   const [showUploadForm, setShowUploadForm] = useState(false)
+  const [project, setProject] = useState<{ name: string } | null>(null)
   const [newPlan, setNewPlan] = useState({
     title: "",
     description: "",
@@ -43,9 +46,24 @@ export default function ProjectTakeoff({ params }: { params: { id: string } }) {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
+    fetchProject()
     fetchPlans()
     fetchMeasurements()
-  }, [])
+  }, [params.id, selectedPlan?.id])
+
+  const fetchProject = async () => {
+    try {
+      const response = await fetch(`/api/projects/${params.id}`)
+      if (response.ok) {
+        const data = await response.json()
+        setProject(data)
+      } else {
+        setError("Failed to fetch project")
+      }
+    } catch (err) {
+      setError("An error occurred while fetching project")
+    }
+  }
 
   const fetchPlans = async () => {
     try {
@@ -68,7 +86,25 @@ export default function ProjectTakeoff({ params }: { params: { id: string } }) {
       const response = await fetch(`/api/projects/${params.id}/takeoff`)
       if (response.ok) {
         const data = await response.json()
-        setMeasurements(data)
+        console.log('Fetched measurements:', data) // Debug log
+        // Parse the points JSON string for each measurement
+        const parsedData = data.map((measurement: any) => {
+          try {
+            return {
+              ...measurement,
+              points: typeof measurement.points === 'string' 
+                ? JSON.parse(measurement.points)
+                : measurement.points
+            }
+          } catch (err) {
+            console.error('Error parsing measurement:', measurement, err)
+            return measurement
+          }
+        })
+        setMeasurements(parsedData)
+      } else {
+        const errorText = await response.text()
+        console.error("Failed to fetch measurements:", errorText)
       }
     } catch (err) {
       console.error("Error fetching measurements:", err)
@@ -139,23 +175,80 @@ export default function ProjectTakeoff({ params }: { params: { id: string } }) {
 
       if (response.ok) {
         const savedMeasurement = await response.json()
-        setMeasurements([...measurements, savedMeasurement])
+        setMeasurements(prevMeasurements => [...prevMeasurements, savedMeasurement])
+        fetchMeasurements()
+      } else {
+        console.error("Failed to save measurement:", await response.text())
       }
     } catch (err) {
       console.error("Error saving measurement:", err)
     }
   }
 
+  const handleMeasurementDelete = async (measurementId: number) => {
+    try {
+      console.log('Deleting measurement:', measurementId); // Debug log
+      const response = await fetch(`/api/projects/${params.id}/takeoff?measurementId=${measurementId}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        console.log('Successfully deleted measurement'); // Debug log
+        setMeasurements(prevMeasurements => 
+          prevMeasurements.filter(m => m.id !== measurementId)
+        );
+        // Refresh measurements to ensure sync with server
+        await fetchMeasurements();
+      } else {
+        const errorText = await response.text();
+        console.error("Failed to delete measurement:", errorText);
+      }
+    } catch (err) {
+      console.error("Error deleting measurement:", err);
+    }
+  };
+
+  const handleMeasurementUpdate = async (id: number, updates: Partial<Measurement>) => {
+    try {
+      console.log('Updating measurement:', id, updates); // Debug log
+      const response = await fetch(`/api/projects/${params.id}/takeoff/${id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(updates),
+      });
+
+      if (response.ok) {
+        console.log('Successfully updated measurement'); // Debug log
+        // Update the measurement in local state immediately
+        const updatedMeasurement = await response.json();
+        setMeasurements(prevMeasurements => 
+          prevMeasurements.map(m => 
+            m.id === id ? { ...m, ...updatedMeasurement } : m
+          )
+        );
+      } else {
+        const errorText = await response.text();
+        console.error("Failed to update measurement:", errorText);
+      }
+    } catch (err) {
+      console.error("Error updating measurement:", err);
+    }
+  };
+
   if (loading) {
     return <div className="text-center mt-8">Loading...</div>
   }
 
   return (
-    <div className="container mx-auto p-4">
-      <h1 className="text-3xl font-bold mb-8">Takeoff for Project {params.id}</h1>
+    <div className="flex flex-col h-[calc(100vh-4rem)]">
+      <div className="flex items-center h-16 px-4 border-b">
+        <h1 className="text-2xl font-bold">Takeoff for {project?.name || 'Loading...'}</h1>
+      </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="md:col-span-1 bg-white p-4 rounded-lg shadow">
+      <div className="flex flex-1 min-h-0">
+        <div className="w-80 bg-white border-r p-4 overflow-y-auto">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-xl font-semibold flex items-center">
               <FileText className="mr-2" />
@@ -190,7 +283,7 @@ export default function ProjectTakeoff({ params }: { params: { id: string } }) {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Description</label>
+                  <label className="block text-sm font-medium text-gray-700">Description (Optional)</label>
                   <textarea
                     value={newPlan.description}
                     onChange={(e) => setNewPlan({ ...newPlan, description: e.target.value })}
@@ -203,10 +296,10 @@ export default function ProjectTakeoff({ params }: { params: { id: string } }) {
                   <label className="block text-sm font-medium text-gray-700">File</label>
                   <input
                     type="file"
-                    ref={fileInputRef}
                     onChange={handleFileChange}
-                    className="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-                    accept=".pdf,.dwg,.dxf"
+                    accept=".pdf"
+                    className="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                    ref={fileInputRef}
                     required
                   />
                 </div>
@@ -215,14 +308,16 @@ export default function ProjectTakeoff({ params }: { params: { id: string } }) {
                   <button
                     type="button"
                     onClick={() => setShowUploadForm(false)}
-                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    disabled={uploading || !newPlan.file}
-                    className="px-4 py-2 text-sm font-medium text-white bg-blue-500 rounded-md hover:bg-blue-600 disabled:opacity-50"
+                    disabled={uploading}
+                    className={`px-4 py-2 text-sm font-medium text-white bg-blue-500 rounded-md shadow-sm hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 ${
+                      uploading ? "opacity-50 cursor-not-allowed" : ""
+                    }`}
                   >
                     {uploading ? "Uploading..." : "Upload"}
                   </button>
@@ -231,35 +326,39 @@ export default function ProjectTakeoff({ params }: { params: { id: string } }) {
             </div>
           )}
 
-          <ul className="space-y-2">
+          <div className="space-y-2">
+            <h3 className="font-medium text-gray-900 mb-2">HUB PLANS</h3>
             {plans.map((plan) => (
-              <li key={plan.id}>
-                <button
-                  onClick={() => setSelectedPlan(plan)}
-                  className={`w-full text-left p-2 rounded ${
-                    selectedPlan?.id === plan.id ? "bg-gray-100 font-semibold" : "hover:bg-gray-50"
-                  }`}
-                >
-                  {plan.title}
-                </button>
-              </li>
+              <button
+                key={plan.id}
+                onClick={() => setSelectedPlan(plan)}
+                className={`w-full text-left px-4 py-3 rounded-lg transition-colors ${
+                  selectedPlan?.id === plan.id
+                    ? "bg-blue-50 border-blue-500"
+                    : "bg-white hover:bg-gray-50 border-gray-200"
+                } border`}
+              >
+                <div className="font-medium text-gray-900">{plan.title}</div>
+                {plan.description && (
+                  <div className="text-sm text-gray-500 mt-1">{plan.description}</div>
+                )}
+              </button>
             ))}
-            {plans.length === 0 && <li className="text-gray-500 text-sm">No plans uploaded yet</li>}
-          </ul>
+          </div>
         </div>
 
-        <div className="md:col-span-3">
+        <div className="flex-1 min-w-0">
           {selectedPlan ? (
-            <div className="bg-white p-4 rounded-lg shadow">
-              <TakeoffViewer
-                plan={selectedPlan}
-                measurements={measurements.filter((m) => m.planId === selectedPlan.id)}
-                onMeasurementSave={handleMeasurementSave}
-              />
-            </div>
+            <TakeoffViewer
+              plan={selectedPlan}
+              measurements={measurements}
+              onMeasurementSave={handleMeasurementSave}
+              onMeasurementUpdate={handleMeasurementUpdate}
+              onMeasurementDelete={handleMeasurementDelete}
+            />
           ) : (
-            <div className="bg-white p-8 rounded-lg shadow text-center text-gray-500">
-              {plans.length > 0 ? "Select a plan to begin takeoff" : "Upload a plan to begin takeoff"}
+            <div className="flex items-center justify-center h-full text-gray-500">
+              Select a plan to begin takeoff
             </div>
           )}
         </div>
@@ -272,31 +371,35 @@ export default function ProjectTakeoff({ params }: { params: { id: string } }) {
         </h2>
         {measurements.length > 0 ? (
           <div className="overflow-x-auto">
-            <table className="min-w-full">
+            <table className="min-w-full text-base">
               <thead>
                 <tr className="border-b">
-                  <th className="text-left p-2">Plan</th>
-                  <th className="text-left p-2">Type</th>
-                  <th className="text-left p-2">Label</th>
-                  <th className="text-right p-2">Value</th>
-                  <th className="text-left p-2">Unit</th>
+                  <th className="text-left p-3 text-lg font-semibold">Plan</th>
+                  <th className="text-left p-3 text-lg font-semibold">Type</th>
+                  <th className="text-left p-3 text-lg font-semibold">Label</th>
+                  <th className="text-right p-3 text-lg font-semibold">Value</th>
+                  <th className="text-left p-3 text-lg font-semibold">Unit</th>
+                  <th className="text-left p-3 text-lg font-semibold">Material</th>
+                  <th className="text-right p-3 text-lg font-semibold">Price/Unit</th>
                 </tr>
               </thead>
               <tbody>
                 {measurements.map((measurement) => (
-                  <tr key={measurement.id} className="border-b">
-                    <td className="p-2">{plans.find((p) => p.id === measurement.planId)?.title}</td>
-                    <td className="p-2 capitalize">{measurement.type}</td>
-                    <td className="p-2">{measurement.label}</td>
-                    <td className="p-2 text-right">{measurement.value.toFixed(2)}</td>
-                    <td className="p-2">{measurement.unit}</td>
+                  <tr key={measurement.id} className="border-b hover:bg-gray-50">
+                    <td className="p-3 text-base">{plans.find((p) => p.id === measurement.planId)?.title}</td>
+                    <td className="p-3 text-base capitalize">{measurement.type}</td>
+                    <td className="p-3 text-base">{measurement.label}</td>
+                    <td className="p-3 text-base text-right font-medium">{measurement.value.toFixed(2)}</td>
+                    <td className="p-3 text-base">{measurement.unit}</td>
+                    <td className="p-3 text-base">{measurement.materialType || '-'}</td>
+                    <td className="p-3 text-base text-right">{measurement.pricePerUnit ? `$${measurement.pricePerUnit.toFixed(2)}` : '-'}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         ) : (
-          <p className="text-center text-gray-500">No measurements recorded yet</p>
+          <p className="text-center text-gray-500 text-base">No measurements recorded yet</p>
         )}
       </div>
 

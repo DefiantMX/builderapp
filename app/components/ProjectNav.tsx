@@ -1,40 +1,63 @@
 "use client"
 
-import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { useState } from 'react'
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 
-interface ProjectNavProps {
-  projectId: string
+type Project = {
+  id: string
+  name: string
+  description: string | null
 }
 
-export default function ProjectNav({ projectId }: ProjectNavProps) {
+export default function ProjectNav({ project }: { project: Project }) {
   const pathname = usePathname()
-
-  const navigation = [
-    { name: "Overview", href: `/projects/${projectId}` },
-    { name: "Tasks", href: `/projects/${projectId}/tasks` },
-    { name: "Plans", href: `/projects/${projectId}/plans` },
-    { name: "Schedule", href: `/projects/${projectId}/schedule` },
-    { name: "Documents", href: `/projects/${projectId}/documents` },
-    { name: "Bids", href: `/projects/${projectId}/bids` },
-    { name: "Takeoff", href: `/projects/${projectId}/takeoff` }
+  
+  const navItems = [
+    { name: 'Overview', href: `/projects/${project.id}` },
+    { name: 'Tasks', href: `/projects/${project.id}/tasks` },
+    { name: 'Plans', href: `/projects/${project.id}/plans` },
+    { name: 'Schedule', href: `/projects/${project.id}/schedule` },
+    { name: 'Daily Log', href: `/projects/${project.id}/daily-log` },
+    { name: 'Finance', href: `/projects/${project.id}/finance` },
+    { name: 'Documents', href: `/projects/${project.id}/documents` },
+    { name: 'Bids', href: `/projects/${project.id}/bids` },
   ]
 
   return (
-    <nav className="flex space-x-8 overflow-x-auto">
-      {navigation.map((item) => (
+    <div>
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold text-gray-800">{project.name}</h1>
         <Link
-          key={item.name}
-          href={item.href}
-          className={`border-b-2 px-1 py-4 text-sm font-medium transition-colors ${
-            pathname === item.href
-              ? "border-blue-500 text-blue-600"
-              : "border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700"
-          }`}
+          href="/projects"
+          className="text-blue-600 hover:text-blue-800 font-medium"
         >
-          {item.name}
+          ← Back to Projects
         </Link>
-      ))}
-    </nav>
+      </div>
+      
+      <nav className="border-b border-gray-200">
+        <div className="flex -mb-px">
+          {navItems.map((item) => {
+            const isActive = pathname === item.href || 
+              (item.name !== 'Overview' && pathname.startsWith(item.href))
+            
+            return (
+              <Link
+                key={item.name}
+                href={item.href}
+                className={`py-4 px-6 font-medium text-sm ${
+                  isActive
+                    ? 'border-b-2 border-blue-500 text-blue-600'
+                    : 'text-gray-500 hover:text-gray-700 hover:border-b-2 hover:border-gray-300'
+                }`}
+              >
+                {item.name}
+              </Link>
+            )
+          })}
+        </div>
+      </nav>
+    </div>
   )
 } 

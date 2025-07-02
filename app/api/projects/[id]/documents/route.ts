@@ -1,105 +1,96 @@
-import { NextResponse } from "next/server"
-import { getServerSession } from "next-auth/next"
-import { authOptions } from "@/app/api/auth/[...nextauth]/route"
-import { prisma } from "@/lib/prisma"
-import { writeFile } from "fs/promises"
-import path from "path"
+import { NextRequest, NextResponse } from 'next/server'
+import { auth } from '@/lib/auth'
+import { db } from '@/lib/db'
 
 export async function POST(
-  request: Request,
+  request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user) {
-      return new NextResponse("Unauthorized", { status: 401 })
+    const session = await auth()
+    if (!session?.user?.id) {
+      return new NextResponse('Authentication required', { status: 401 })
     }
 
-    const project = await prisma.project.findUnique({
-      where: { id: Number(params.id) }
+    // Check if project exists and user has access
+    const project = await db.project.findUnique({
+      where: {
+        id: params.id,
+        userId: session.user.id
+      }
     })
 
     if (!project) {
-      return new NextResponse("Project not found", { status: 404 })
-    }
-
-    if (project.userId !== session.user.id) {
-      return new NextResponse("Unauthorized", { status: 401 })
+      return new NextResponse('Project not found', { status: 404 })
     }
 
     const formData = await request.formData()
-    const file = formData.get("file") as File
-    const title = formData.get("title") as string
-    const description = formData.get("description") as string
-    const category = formData.get("category") as string
+    const title = formData.get('title') as string
+    const description = formData.get('description') as string
+    const category = formData.get('category') as string
+    const file = formData.get('file') as File
 
-    if (!file) {
-      return new NextResponse("No file provided", { status: 400 })
+    if (!title || !category || !file) {
+      return new NextResponse('Missing required fields', { status: 400 })
     }
 
-    // Create unique filename
-    const buffer = Buffer.from(await file.arrayBuffer())
-    const filename = Date.now() + "-" + file.name.replace(/\s+/g, "-")
-    const uploadDir = path.join(process.cwd(), "public/uploads")
-    const filepath = path.join(uploadDir, filename)
+    // TODO: Upload file to storage service (e.g., S3)
+    // For now, we'll just use a placeholder URL
+    const fileUrl = '/placeholder.pdf'
+    const fileType = file.type || 'application/pdf'
 
-    // Save file using Uint8Array
-    await writeFile(filepath, new Uint8Array(buffer))
-    const fileUrl = `/uploads/${filename}`
-
-    // Create document record
-    const document = await prisma.document.create({
+    // Create document in database
+    const document = await db.document.create({
       data: {
         title,
         description,
-        fileUrl,
-        fileType: file.type,
         category,
-        status: "pending",
-        projectId: Number(params.id),
-        userId: session.user.id,
-      },
+        fileUrl,
+        fileType,
+        status: 'pending',
+        projectId: params.id
+      }
     })
 
     return NextResponse.json(document)
   } catch (error) {
-    console.error("Error in document upload:", error)
-    return new NextResponse("Internal Server Error", { status: 500 })
+    console.error('Error creating document:', error)
+    return new NextResponse('Internal Server Error', { status: 500 })
   }
 }
 
 export async function GET(
-  request: Request,
+  request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user) {
-      return new NextResponse("Unauthorized", { status: 401 })
+    const session = await auth()
+    if (!session?.user?.id) {
+      return new NextResponse('Authentication required', { status: 401 })
     }
 
-    const project = await prisma.project.findUnique({
-      where: { id: Number(params.id) },
+    // Check if project exists and user has access
+    const project = await db.project.findUnique({
+      where: {
+        id: params.id,
+        userId: session.user.id
+      },
       include: {
         documents: {
           orderBy: {
-            createdAt: "desc"
+            createdAt: 'desc'
           }
         }
       }
     })
 
     if (!project) {
-      return new NextResponse("Project not found", { status: 404 })
-    }
-
-    if (project.userId !== session.user.id) {
-      return new NextResponse("Unauthorized", { status: 401 })
+      return new NextResponse('Project not found', { status: 404 })
     }
 
     return NextResponse.json(project.documents)
   } catch (error) {
-    console.error("Error fetching documents:", error)
-    return new NextResponse("Internal Server Error", { status: 500 })
+    console.error('Error fetching documents:', error)
+    return new NextResponse('Internal Server Error', { status: 500 })
   }
 } 

@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server"
-import { getServerSession } from "next-auth/next"
-import { authOptions } from "@/app/api/auth/[...nextauth]/route"
+import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 
 // GET: Fetch invoices for a project
@@ -9,39 +8,33 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user) {
-      return new NextResponse("Unauthorized", { status: 401 })
+    const session = await auth()
+    if (!session) {
+      return new NextResponse('Unauthorized', { status: 401 })
     }
 
-    const projectId = Number(params.id)
-    if (isNaN(projectId)) {
-      return new NextResponse("Invalid project ID", { status: 400 })
-    }
-
-    // Check project ownership
-    const project = await prisma.project.findUnique({
-      where: { id: projectId }
+    const invoice = await prisma.invoice.findUnique({
+      where: {
+        id: parseInt(params.id),
+      },
+      include: {
+        project: true,
+      },
     })
 
-    if (!project) {
-      return new NextResponse("Project not found", { status: 404 })
+    if (!invoice) {
+      return new NextResponse('Invoice not found', { status: 404 })
     }
 
-    if (project.userId !== session.user.id) {
-      return new NextResponse("Unauthorized", { status: 401 })
+    // Check if user owns the project
+    if (invoice.project.userId !== session.user.id) {
+      return new NextResponse('Unauthorized', { status: 401 })
     }
 
-    // Get all invoices for the project
-    const invoices = await prisma.invoice.findMany({
-      where: { projectId },
-      orderBy: { date: "desc" }
-    })
-
-    return NextResponse.json(invoices)
+    return NextResponse.json(invoice)
   } catch (error) {
-    console.error("[INVOICES_GET]", error)
-    return new NextResponse("Internal error", { status: 500 })
+    console.error('Error in GET /api/finances/invoices/[id]:', error)
+    return new NextResponse('Internal Server Error', { status: 500 })
   }
 }
 
@@ -52,7 +45,7 @@ export async function POST(
 ) {
   try {
     console.log("[INVOICE_POST] Starting...")
-    const session = await getServerSession(authOptions)
+    const session = await auth()
     if (!session?.user) {
       console.log("[INVOICE_POST] No session found")
       return new NextResponse("Unauthorized", { status: 401 })
@@ -111,45 +104,96 @@ export async function POST(
   }
 }
 
+// PATCH: Update an invoice
+export async function PATCH(
+  request: Request,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const session = await auth()
+    if (!session) {
+      return new NextResponse('Unauthorized', { status: 401 })
+    }
+
+    const invoice = await prisma.invoice.findUnique({
+      where: {
+        id: parseInt(params.id),
+      },
+      include: {
+        project: true,
+      },
+    })
+
+    if (!invoice) {
+      return new NextResponse('Invoice not found', { status: 404 })
+    }
+
+    // Check if user owns the project
+    if (invoice.project.userId !== session.user.id) {
+      return new NextResponse('Unauthorized', { status: 401 })
+    }
+
+    const data = await request.json()
+
+    const updatedInvoice = await prisma.invoice.update({
+      where: {
+        id: parseInt(params.id),
+      },
+      data: {
+        division: data.division,
+        vendor: data.vendor,
+        amount: data.amount,
+        date: new Date(data.date),
+        description: data.description,
+      },
+    })
+
+    return NextResponse.json(updatedInvoice)
+  } catch (error) {
+    console.error('Error in PATCH /api/finances/invoices/[id]:', error)
+    return new NextResponse('Internal Server Error', { status: 500 })
+  }
+}
+
 // DELETE: Delete an invoice
 export async function DELETE(
   request: Request,
   { params }: { params: { id: string } }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user) {
-      return new NextResponse("Unauthorized", { status: 401 })
+    const session = await auth()
+    if (!session) {
+      return new NextResponse('Unauthorized', { status: 401 })
     }
 
-    const invoiceId = Number(params.id)
-    if (isNaN(invoiceId)) {
-      return new NextResponse("Invalid invoice ID", { status: 400 })
-    }
-
-    // Get invoice with project to check ownership
     const invoice = await prisma.invoice.findUnique({
-      where: { id: invoiceId },
-      include: { project: true }
+      where: {
+        id: parseInt(params.id),
+      },
+      include: {
+        project: true,
+      },
     })
 
     if (!invoice) {
-      return new NextResponse("Invoice not found", { status: 404 })
+      return new NextResponse('Invoice not found', { status: 404 })
     }
 
+    // Check if user owns the project
     if (invoice.project.userId !== session.user.id) {
-      return new NextResponse("Unauthorized", { status: 401 })
+      return new NextResponse('Unauthorized', { status: 401 })
     }
 
-    // Delete invoice
     await prisma.invoice.delete({
-      where: { id: invoiceId }
+      where: {
+        id: parseInt(params.id),
+      },
     })
 
     return new NextResponse(null, { status: 204 })
   } catch (error) {
-    console.error("[INVOICE_DELETE]", error)
-    return new NextResponse("Internal error", { status: 500 })
+    console.error('Error in DELETE /api/finances/invoices/[id]:', error)
+    return new NextResponse('Internal Server Error', { status: 500 })
   }
 }
 

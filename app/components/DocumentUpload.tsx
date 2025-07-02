@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef } from "react"
 import { Upload, X, FileText, AlertCircle } from "lucide-react"
 
 type DocumentType = "CONTRACT" | "SUBMITTAL" | "RFI" | "CHANGE_ORDER"
@@ -14,9 +14,10 @@ export default function DocumentUpload({ projectId }: DocumentUploadProps) {
   const [description, setDescription] = useState("")
   const [file, setFile] = useState<File | null>(null)
   const [category, setCategory] = useState<DocumentType>("CONTRACT")
-  const [isUploading, setIsUploading] = useState(false)
+  const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [preview, setPreview] = useState<string | null>(null)
+  const [success, setSuccess] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0]
@@ -29,7 +30,6 @@ export default function DocumentUpload({ projectId }: DocumentUploadProps) {
       // Create preview URL for supported file types
       if (selectedFile.type.startsWith('image/')) {
         const url = URL.createObjectURL(selectedFile)
-        setPreview(url)
         return () => URL.revokeObjectURL(url)
       }
     }
@@ -43,7 +43,7 @@ export default function DocumentUpload({ projectId }: DocumentUploadProps) {
     }
 
     setError(null)
-    setIsUploading(true)
+    setUploading(true)
     const formData = new FormData()
     formData.append("title", title)
     formData.append("description", description)
@@ -65,13 +65,12 @@ export default function DocumentUpload({ projectId }: DocumentUploadProps) {
       setDescription("")
       setFile(null)
       setCategory("CONTRACT")
-      setPreview(null)
-      window.location.reload()
+      setSuccess(true)
     } catch (error) {
       console.error("Error uploading document:", error)
       setError("Failed to upload document. Please try again.")
     } finally {
-      setIsUploading(false)
+      setUploading(false)
     }
   }
 
@@ -157,7 +156,6 @@ export default function DocumentUpload({ projectId }: DocumentUploadProps) {
                   type="button"
                   onClick={() => {
                     setFile(null)
-                    setPreview(null)
                   }}
                   className="p-1 text-gray-400 hover:text-gray-500"
                 >
@@ -179,6 +177,7 @@ export default function DocumentUpload({ projectId }: DocumentUploadProps) {
                         type="file"
                         className="sr-only"
                         onChange={handleFileChange}
+                        ref={fileInputRef}
                       />
                     </label>
                     <p className="pl-1">or drag and drop</p>
@@ -199,12 +198,12 @@ export default function DocumentUpload({ projectId }: DocumentUploadProps) {
 
         <button
           type="submit"
-          disabled={isUploading}
+          disabled={uploading}
           className={`w-full flex justify-center items-center gap-2 py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 ${
-            isUploading ? "opacity-50 cursor-not-allowed" : ""
+            uploading ? "opacity-50 cursor-not-allowed" : ""
           }`}
         >
-          {isUploading ? (
+          {uploading ? (
             <>
               <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
               Uploading...

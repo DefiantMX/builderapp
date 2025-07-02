@@ -2,55 +2,139 @@
 
 import type React from "react"
 
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useCallback, useMemo } from "react"
 import { X, Upload, DollarSign, Calendar, FileText } from "lucide-react"
 
+interface Invoice {
+  id: string
+  invoiceNumber?: string
+  date: string
+  vendor: string
+  amount: number
+  division: string
+  includedInDraw?: boolean
+}
+
 type CreateDrawFormProps = {
-  projectId: number
+  projectId: string
   onDrawCreated: (draw: any) => void
   onCancel: () => void
   nextDrawNumber: number
+  preselectedInvoices?: string[]
 }
 
-export default function CreateDrawForm({ projectId, onDrawCreated, onCancel, nextDrawNumber }: CreateDrawFormProps) {
+export default function CreateDrawForm({ 
+  projectId, 
+  onDrawCreated, 
+  onCancel, 
+  nextDrawNumber,
+  preselectedInvoices = [] 
+}: CreateDrawFormProps) {
+  const today = new Date().toISOString().split("T")[0]
   const [drawNumber, setDrawNumber] = useState(nextDrawNumber)
-  const [date, setDate] = useState("")
+  const [date, setDate] = useState(today)
   const [amount, setAmount] = useState("")
   const [description, setDescription] = useState("")
   const [file, setFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState("")
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const [invoices, setInvoices] = useState<any[]>([])
-  const [selectedInvoices, setSelectedInvoices] = useState<number[]>([])
+  const [invoices, setInvoices] = useState<Invoice[]>([])
+  const [selectedInvoices, setSelectedInvoices] = useState<Set<string>>(() => new Set(preselectedInvoices))
   const [loadingInvoices, setLoadingInvoices] = useState(false)
+  const [validationErrors, setValidationErrors] = useState<{[key: string]: string}>({})
+
+  const fetchInvoices = useCallback(async () => {
+    setLoadingInvoices(true)
+    try {
+      const response = await fetch(`/api/projects/${projectId}/invoices`)
+      if (response.ok) {
+        const data = await response.json()
+        const availableInvoices = data.filter((invoice: Invoice) => !invoice.includedInDraw)
+        setInvoices(availableInvoices)
+
+        if (preselectedInvoices.length > 0) {
+          const total = availableInvoices
+            .filter((invoice: Invoice) => preselectedInvoices.includes(invoice.id))
+            .reduce((sum: number, invoice: Invoice) => sum + invoice.amount, 0)
+          setAmount(total.toString())
+        }
+      } else {
+        throw new Error("Failed to fetch invoices")
+      }
+    } catch (err) {
+      console.error("Error fetching invoices:", err)
+      setError(err instanceof Error ? err.message : "Failed to load invoices")
+    } finally {
+      setLoadingInvoices(false)
+    }
+  }, [projectId, preselectedInvoices])
 
   useEffect(() => {
-    // Fetch available invoices for this project
-    const fetchInvoices = async () => {
-      setLoadingInvoices(true)
-      try {
-        const response = await fetch(`/api/finances/invoices/${projectId}`)
-        if (response.ok) {
-          const data = await response.json()
-          // Filter out invoices that have already been included in previous draws
-          const availableInvoices = data.filter((invoice) => !invoice.includedInDraw)
-          setInvoices(availableInvoices)
-        }
-      } catch (err) {
-        console.error("Error fetching invoices:", err)
-      } finally {
-        setLoadingInvoices(false)
-      }
-    }
     fetchInvoices()
-  }, [projectId])
+  }, [fetchInvoices])
+
+  const handleInvoiceSelect = useCallback((invoiceId: string) => {
+    setSelectedInvoices(prev => {
+      const newSelected = new Set(prev)
+      if (newSelected.has(invoiceId)) {
+        newSelected.delete(invoiceId)
+      } else {
+        newSelected.add(invoiceId)
+      }
+      return newSelected
+    })
+  }, [])
+
+  const handleSelectAll = useCallback((checked: boolean) => {
+    setSelectedInvoices(prev => {
+      if (checked) {
+        return new Set(invoices.map(invoice => invoice.id))
+      }
+      return new Set()
+    })
+  }, [invoices])
+
+  const calculateSelectedTotal = useCallback(() => {
+    return invoices
+      .filter(invoice => selectedInvoices.has(invoice.id))
+      .reduce((sum, invoice) => sum + invoice.amount, 0)
+  }, [invoices, selectedInvoices])
+
+  const selectedTotal = useMemo(() => calculateSelectedTotal(), [calculateSelectedTotal])
+
+  useEffect(() => {
+    if (selectedInvoices.size > 0) {
+      setAmount(selectedTotal.toString())
+    }
+  }, [selectedTotal])
+
+  const validateForm = () => {
+    const errors: {[key: string]: string} = {}
+
+    if (!drawNumber) {
+      errors.drawNumber = "Draw number is required"
+    }
+    if (!date) {
+      errors.date = "Date is required"
+    }
+    if (!amount || parseFloat(amount) <= 0) {
+      errors.amount = "Valid amount is required"
+    }
+    if (selectedInvoices.size === 0) {
+      errors.invoices = "Please select at least one invoice"
+    }
+
+    setValidationErrors(errors)
+    return Object.keys(errors).length === 0
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
+    setValidationErrors({})
 
-    if (!drawNumber || !date || !amount) {
+    if (!validateForm()) {
       setError("Please fill in all required fields")
       return
     }
@@ -58,22 +142,18 @@ export default function CreateDrawForm({ projectId, onDrawCreated, onCancel, nex
     setUploading(true)
 
     try {
-      const formData = new FormData()
-      formData.append("projectId", projectId.toString())
-      formData.append("drawNumber", drawNumber.toString())
-      formData.append("date", date)
-      formData.append("amount", amount)
-      formData.append("description", description)
-      formData.append("status", "Draft")
-      formData.append("selectedInvoices", JSON.stringify(selectedInvoices))
-
-      if (file) {
-        formData.append("file", file)
-      }
-
-      const response = await fetch("/api/finances/draws", {
+      const response = await fetch(`/api/projects/${projectId}/draws`, {
         method: "POST",
-        body: formData,
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          date,
+          amount: parseFloat(amount),
+          description: description || undefined,
+          invoiceIds: Array.from(selectedInvoices),
+          drawNumber
+        }),
       })
 
       if (!response.ok) {
@@ -95,18 +175,6 @@ export default function CreateDrawForm({ projectId, onDrawCreated, onCancel, nex
       setFile(e.target.files[0])
     }
   }
-
-  const handleInvoiceSelect = (invoiceId: number) => {
-    setSelectedInvoices((prev) => {
-      if (prev.includes(invoiceId)) {
-        return prev.filter((id) => id !== invoiceId)
-      } else {
-        return [...prev, invoiceId]
-      }
-    })
-  }
-
-  const today = new Date().toISOString().split("T")[0]
 
   return (
     <div className="bg-white shadow-md rounded-lg p-6 mb-6">
@@ -130,9 +198,14 @@ export default function CreateDrawForm({ projectId, onDrawCreated, onCancel, nex
               type="number"
               value={drawNumber}
               onChange={(e) => setDrawNumber(Number(e.target.value))}
-              className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+              className={`shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline ${
+                validationErrors.drawNumber ? 'border-red-500' : ''
+              }`}
               required
             />
+            {validationErrors.drawNumber && (
+              <p className="text-red-500 text-xs mt-1">{validationErrors.drawNumber}</p>
+            )}
           </div>
 
           <div>
@@ -148,9 +221,14 @@ export default function CreateDrawForm({ projectId, onDrawCreated, onCancel, nex
               value={date}
               onChange={(e) => setDate(e.target.value)}
               max={today}
-              className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+              className={`shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline ${
+                validationErrors.date ? 'border-red-500' : ''
+              }`}
               required
             />
+            {validationErrors.date && (
+              <p className="text-red-500 text-xs mt-1">{validationErrors.date}</p>
+            )}
           </div>
 
           <div>
@@ -167,10 +245,15 @@ export default function CreateDrawForm({ projectId, onDrawCreated, onCancel, nex
               min="0"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+              className={`shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline ${
+                validationErrors.amount ? 'border-red-500' : ''
+              }`}
               placeholder="0.00"
               required
             />
+            {validationErrors.amount && (
+              <p className="text-red-500 text-xs mt-1">{validationErrors.amount}</p>
+            )}
           </div>
 
           <div className="col-span-1 md:col-span-2">
@@ -213,20 +296,35 @@ export default function CreateDrawForm({ projectId, onDrawCreated, onCancel, nex
             />
           </div>
           <div className="col-span-1 md:col-span-2 mt-4">
-            <label className="block text-gray-700 text-sm font-bold mb-2">Select Invoices to Include</label>
+            <label className="block text-gray-700 text-sm font-bold mb-2">Select Invoices to Include *</label>
+            {validationErrors.invoices && (
+              <p className="text-red-500 text-xs mt-1 mb-2">{validationErrors.invoices}</p>
+            )}
 
             {loadingInvoices ? (
               <p className="text-gray-500 text-sm">Loading invoices...</p>
+            ) : error ? (
+              <div className="text-red-500 text-sm p-4 bg-red-50 rounded-md">
+                {error}
+                <button 
+                  onClick={fetchInvoices}
+                  className="ml-2 text-red-700 hover:text-red-900 underline"
+                >
+                  Try Again
+                </button>
+              </div>
             ) : invoices.length > 0 ? (
               <div className="border rounded-md overflow-hidden">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th
-                        scope="col"
-                        className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                      >
-                        Select
+                      <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <input
+                          type="checkbox"
+                          checked={invoices.length > 0 && selectedInvoices.size === invoices.length}
+                          onChange={(e) => handleSelectAll(e.target.checked)}
+                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        />
                       </th>
                       <th
                         scope="col"
@@ -261,34 +359,37 @@ export default function CreateDrawForm({ projectId, onDrawCreated, onCancel, nex
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {invoices.map((invoice) => (
-                      <tr
-                        key={invoice.id}
-                        className={selectedInvoices.includes(invoice.id) ? "bg-blue-50" : "hover:bg-gray-50"}
-                      >
-                        <td className="px-4 py-2 whitespace-nowrap">
-                          <label className="inline-flex items-center">
-                            <input
-                              type="checkbox"
-                              checked={selectedInvoices.includes(invoice.id)}
-                              onChange={() => handleInvoiceSelect(invoice.id)}
-                              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                            />
-                          </label>
-                        </td>
-                        <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
-                          {invoice.invoiceNumber || `-`}
-                        </td>
-                        <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
-                          {new Date(invoice.date).toLocaleDateString()}
-                        </td>
-                        <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{invoice.vendor}</td>
-                        <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{invoice.division}</td>
-                        <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500 text-right">
-                          ${invoice.amount.toLocaleString()}
-                        </td>
-                      </tr>
-                    ))}
+                    {invoices.map((invoice) => {
+                      const isSelected = selectedInvoices.has(invoice.id)
+                      return (
+                        <tr
+                          key={invoice.id}
+                          className={isSelected ? "bg-blue-50" : "hover:bg-gray-50"}
+                        >
+                          <td className="px-4 py-2 whitespace-nowrap">
+                            <label className="inline-flex items-center">
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => handleInvoiceSelect(invoice.id)}
+                                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                              />
+                            </label>
+                          </td>
+                          <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
+                            {invoice.invoiceNumber || `-`}
+                          </td>
+                          <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
+                            {new Date(invoice.date).toLocaleDateString()}
+                          </td>
+                          <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{invoice.vendor}</td>
+                          <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{invoice.division}</td>
+                          <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500 text-right">
+                            ${invoice.amount.toLocaleString()}
+                          </td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                   <tfoot className="bg-gray-50">
                     <tr>
@@ -296,37 +397,15 @@ export default function CreateDrawForm({ projectId, onDrawCreated, onCancel, nex
                         Selected Total:
                       </td>
                       <td className="px-4 py-2 text-sm font-medium text-right">
-                        $
-                        {invoices
-                          .filter((invoice) => selectedInvoices.includes(invoice.id))
-                          .reduce((sum, invoice) => sum + invoice.amount, 0)
-                          .toLocaleString()}
+                        ${selectedTotal.toLocaleString()}
                       </td>
                     </tr>
                   </tfoot>
                 </table>
               </div>
             ) : (
-              <p className="text-gray-500 text-sm">No available invoices found for this project.</p>
-            )}
-
-            {selectedInvoices.length > 0 && (
-              <div className="mt-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    // Calculate the total of selected invoices
-                    const total = invoices
-                      .filter((invoice) => selectedInvoices.includes(invoice.id))
-                      .reduce((sum, invoice) => sum + invoice.amount, 0)
-
-                    // Update the amount field
-                    setAmount(total.toString())
-                  }}
-                  className="text-sm text-blue-500 hover:text-blue-700"
-                >
-                  Use selected invoices total as draw amount
-                </button>
+              <div className="text-gray-500 text-sm p-4 bg-gray-50 rounded-md">
+                No available invoices found for this project. Please create invoices first.
               </div>
             )}
           </div>

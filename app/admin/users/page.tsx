@@ -11,8 +11,8 @@ export default function ManageUsers() {
   const { user } = useAuth()
   const router = useRouter()
   const [userList, setUserList] = useState(users)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState("")
+  const [loading, setLoading] = useState(false)
+  const [error] = useState<string | null>(null)
 
   // Redirect if not admin
   useEffect(() => {

@@ -4,15 +4,17 @@ import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { Plus, DollarSign, Mail, Calendar } from "lucide-react"
+import { Plus, DollarSign, Mail, Calendar, CheckSquare } from "lucide-react"
+import BidSummaryPDF from "@/app/components/BidSummaryPDF"
 
 type Bid = {
-  id: number
+  id: string
   title: string
   description: string | null
   contractorName: string
   contractorEmail: string
   amount: number
+  division: string
   status: string
   submissionDate: string
   validUntil: string | null
@@ -21,6 +23,32 @@ type Bid = {
   updatedAt: string
 }
 
+const DIVISIONS = [
+  { id: "01", name: "General Requirements" },
+  { id: "02", name: "Existing Conditions" },
+  { id: "03", name: "Concrete" },
+  { id: "04", name: "Masonry" },
+  { id: "05", name: "Metals" },
+  { id: "06", name: "Wood, Plastics, and Composites" },
+  { id: "07", name: "Thermal and Moisture Protection" },
+  { id: "08", name: "Openings" },
+  { id: "09", name: "Finishes" },
+  { id: "10", name: "Specialties" },
+  { id: "11", name: "Equipment" },
+  { id: "12", name: "Furnishings" },
+  { id: "13", name: "Special Construction" },
+  { id: "14", name: "Conveying Equipment" },
+  { id: "21", name: "Fire Suppression" },
+  { id: "22", name: "Plumbing" },
+  { id: "23", name: "Heating, Ventilating, and Air Conditioning" },
+  { id: "26", name: "Electrical" },
+  { id: "27", name: "Communications" },
+  { id: "28", name: "Electronic Safety and Security" },
+  { id: "31", name: "Earthwork" },
+  { id: "32", name: "Exterior Improvements" },
+  { id: "33", name: "Utilities" },
+]
+
 export default function ProjectBidsPage({ params }: { params: { id: string } }) {
   const { data: session, status } = useSession()
   const router = useRouter()
@@ -28,12 +56,14 @@ export default function ProjectBidsPage({ params }: { params: { id: string } }) 
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isAddingBid, setIsAddingBid] = useState(false)
+  const [selectedBids, setSelectedBids] = useState<string[]>([])
   const [newBid, setNewBid] = useState({
     title: "",
     description: "",
     contractorName: "",
     contractorEmail: "",
     amount: "",
+    division: "",
     validUntil: "",
     notes: "",
   })
@@ -92,6 +122,7 @@ export default function ProjectBidsPage({ params }: { params: { id: string } }) 
         contractorName: "",
         contractorEmail: "",
         amount: "",
+        division: "",
         validUntil: "",
         notes: "",
       })
@@ -101,7 +132,7 @@ export default function ProjectBidsPage({ params }: { params: { id: string } }) 
     }
   }
 
-  const handleStatusChange = async (bidId: number, newStatus: string) => {
+  const handleStatusChange = async (bidId: string, newStatus: string) => {
     try {
       const response = await fetch(`/api/projects/${params.id}/bids/${bidId}`, {
         method: "PUT",
@@ -123,7 +154,7 @@ export default function ProjectBidsPage({ params }: { params: { id: string } }) 
     }
   }
 
-  const handleDelete = async (bidId: number) => {
+  const handleDelete = async (bidId: string) => {
     if (!confirm("Are you sure you want to delete this bid?")) {
       return
     }
@@ -151,6 +182,22 @@ export default function ProjectBidsPage({ params }: { params: { id: string } }) 
     }).format(amount)
   }
 
+  const handleBidSelect = (bidId: string) => {
+    setSelectedBids(prev => 
+      prev.includes(bidId) 
+        ? prev.filter(id => id !== bidId)
+        : [...prev, bidId]
+    )
+  }
+
+  const handleSelectAll = () => {
+    if (selectedBids.length === bids.length) {
+      setSelectedBids([])
+    } else {
+      setSelectedBids(bids.map(bid => bid.id))
+    }
+  }
+
   if (status === "loading" || isLoading) {
     return (
       <div className="flex justify-center items-center min-h-screen">
@@ -169,13 +216,23 @@ export default function ProjectBidsPage({ params }: { params: { id: string } }) 
             </Link>
             <h1 className="text-2xl font-bold mt-2">Project Bids</h1>
           </div>
-          <button
-            onClick={() => setIsAddingBid(true)}
-            className="flex items-center bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md"
-          >
-            <Plus className="h-5 w-5 mr-2" />
-            Add Bid
-          </button>
+          <div className="flex items-center space-x-4">
+            {selectedBids.length > 0 && (
+              <BidSummaryPDF
+                selectedBids={bids.filter(bid => selectedBids.includes(bid.id))}
+                divisions={DIVISIONS.reduce((acc, div) => ({ ...acc, [div.id]: div.name }), {})}
+                projectId={params.id}
+                projectName="Project Bids"
+              />
+            )}
+            <button
+              onClick={() => setIsAddingBid(true)}
+              className="flex items-center bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md"
+            >
+              <Plus className="h-5 w-5 mr-2" />
+              Add Bid
+            </button>
+          </div>
         </div>
 
         {error && (
@@ -253,7 +310,7 @@ export default function ProjectBidsPage({ params }: { params: { id: string } }) 
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-4">
                 <div>
                   <label htmlFor="amount" className="block text-sm font-medium text-gray-700">
                     Bid Amount ($)
@@ -268,6 +325,26 @@ export default function ProjectBidsPage({ params }: { params: { id: string } }) 
                     min="0"
                     step="0.01"
                   />
+                </div>
+
+                <div>
+                  <label htmlFor="division" className="block text-sm font-medium text-gray-700">
+                    Division
+                  </label>
+                  <select
+                    id="division"
+                    value={newBid.division}
+                    onChange={(e) => setNewBid({ ...newBid, division: e.target.value })}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                    required
+                  >
+                    <option value="">Select a Division</option>
+                    {DIVISIONS.map((div) => (
+                      <option key={div.id} value={div.id}>
+                        {div.id} - {div.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div>
@@ -297,7 +374,7 @@ export default function ProjectBidsPage({ params }: { params: { id: string } }) 
                 />
               </div>
 
-              <div className="flex justify-end space-x-3">
+              <div className="flex justify-end space-x-4">
                 <button
                   type="button"
                   onClick={() => setIsAddingBid(false)}
@@ -322,84 +399,119 @@ export default function ProjectBidsPage({ params }: { params: { id: string } }) 
               <p className="text-gray-500">No bids yet. Add your first bid to get started!</p>
             </div>
           ) : (
-            bids.map((bid) => (
-              <div key={bid.id} className="bg-white shadow-md rounded-lg p-6">
-                <div className="flex items-start justify-between">
-                  <div className="space-y-4">
-                    <div>
-                      <h3 className="text-lg font-medium">{bid.title}</h3>
-                      {bid.description && (
-                        <p className="text-gray-600 mt-1">{bid.description}</p>
-                      )}
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-x-6 gap-y-4">
-                      <div className="flex items-center">
-                        <DollarSign className="h-5 w-5 text-gray-400 mr-2" />
-                        <span className="text-lg font-semibold">{formatCurrency(bid.amount)}</span>
-                      </div>
-
-                      <div className="flex items-center">
-                        <Mail className="h-5 w-5 text-gray-400 mr-2" />
-                        <a
-                          href={`mailto:${bid.contractorEmail}`}
-                          className="text-blue-600 hover:text-blue-800"
-                        >
-                          {bid.contractorName}
-                        </a>
-                      </div>
-
-                      <div className="flex items-center">
-                        <Calendar className="h-5 w-5 text-gray-400 mr-2" />
-                        <span className="text-sm text-gray-600">
-                          Submitted: {new Date(bid.submissionDate).toLocaleDateString()}
-                        </span>
-                      </div>
-
-                      {bid.validUntil && (
-                        <div className="flex items-center">
-                          <Calendar className="h-5 w-5 text-gray-400 mr-2" />
-                          <span className="text-sm text-gray-600">
-                            Valid until: {new Date(bid.validUntil).toLocaleDateString()}
-                          </span>
+            <>
+              <div className="flex items-center space-x-2 mb-4">
+                <button
+                  onClick={handleSelectAll}
+                  className={`p-2 rounded ${
+                    selectedBids.length === bids.length
+                      ? "bg-blue-100 text-blue-600"
+                      : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                  }`}
+                >
+                  <CheckSquare className="h-5 w-5" />
+                </button>
+                <span className="text-sm text-gray-600">
+                  {selectedBids.length} bid{selectedBids.length !== 1 ? "s" : ""} selected
+                </span>
+              </div>
+              {bids.map((bid) => (
+                <div key={bid.id} className="bg-white shadow-md rounded-lg p-6">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-start space-x-4">
+                      <button
+                        onClick={() => handleBidSelect(bid.id)}
+                        className={`p-2 rounded ${
+                          selectedBids.includes(bid.id)
+                            ? "bg-blue-100 text-blue-600"
+                            : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                        }`}
+                      >
+                        <CheckSquare className="h-5 w-5" />
+                      </button>
+                      <div className="space-y-4">
+                        <div>
+                          <h3 className="text-lg font-medium">{bid.title}</h3>
+                          {bid.description && (
+                            <p className="text-gray-600 mt-1">{bid.description}</p>
+                          )}
                         </div>
-                      )}
+
+                        <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+                          <div className="flex items-center">
+                            <DollarSign className="h-5 w-5 text-gray-400 mr-2" />
+                            <span className="text-lg font-semibold">{formatCurrency(bid.amount)}</span>
+                          </div>
+
+                          <div className="flex items-center">
+                            <Mail className="h-5 w-5 text-gray-400 mr-2" />
+                            <a
+                              href={`mailto:${bid.contractorEmail}`}
+                              className="text-blue-600 hover:text-blue-800"
+                            >
+                              {bid.contractorName}
+                            </a>
+                          </div>
+
+                          <div className="flex items-center">
+                            <Calendar className="h-5 w-5 text-gray-400 mr-2" />
+                            <span className="text-sm text-gray-600">
+                              Submitted: {new Date(bid.submissionDate).toLocaleDateString()}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center">
+                            <span className="text-sm text-gray-600">
+                              Division: {DIVISIONS.find(d => d.id === bid.division)?.name || bid.division}
+                            </span>
+                          </div>
+
+                          {bid.validUntil && (
+                            <div className="flex items-center">
+                              <Calendar className="h-5 w-5 text-gray-400 mr-2" />
+                              <span className="text-sm text-gray-600">
+                                Valid until: {new Date(bid.validUntil).toLocaleDateString()}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+
+                        {bid.notes && (
+                          <div className="bg-gray-50 p-3 rounded-md">
+                            <p className="text-sm text-gray-600">{bid.notes}</p>
+                          </div>
+                        )}
+                      </div>
                     </div>
 
-                    {bid.notes && (
-                      <div className="bg-gray-50 p-3 rounded-md">
-                        <p className="text-sm text-gray-600">{bid.notes}</p>
-                      </div>
-                    )}
-                  </div>
+                    <div className="flex flex-col items-end space-y-2">
+                      <select
+                        value={bid.status}
+                        onChange={(e) => handleStatusChange(bid.id, e.target.value)}
+                        className={`text-sm rounded-md border-gray-300 pr-8 ${
+                          bid.status === "Accepted"
+                            ? "text-green-800 bg-green-50"
+                            : bid.status === "Rejected"
+                            ? "text-red-800 bg-red-50"
+                            : "text-yellow-800 bg-yellow-50"
+                        }`}
+                      >
+                        <option value="Pending">Pending</option>
+                        <option value="Accepted">Accepted</option>
+                        <option value="Rejected">Rejected</option>
+                      </select>
 
-                  <div className="flex flex-col items-end space-y-2">
-                    <select
-                      value={bid.status}
-                      onChange={(e) => handleStatusChange(bid.id, e.target.value)}
-                      className={`text-sm rounded-md border-gray-300 pr-8 ${
-                        bid.status === "Accepted"
-                          ? "text-green-800 bg-green-50"
-                          : bid.status === "Rejected"
-                          ? "text-red-800 bg-red-50"
-                          : "text-yellow-800 bg-yellow-50"
-                      }`}
-                    >
-                      <option value="Pending">Pending</option>
-                      <option value="Accepted">Accepted</option>
-                      <option value="Rejected">Rejected</option>
-                    </select>
-
-                    <button
-                      onClick={() => handleDelete(bid.id)}
-                      className="text-red-600 hover:text-red-800"
-                    >
-                      Delete
-                    </button>
+                      <button
+                        onClick={() => handleDelete(bid.id)}
+                        className="text-red-600 hover:text-red-800"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))
+              ))}
+            </>
           )}
         </div>
       </div>

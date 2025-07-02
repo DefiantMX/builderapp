@@ -168,7 +168,7 @@ export default function NewBid({ params }: { params: { id: string } }) {
             </label>
           </div>
         </div>
-        <div className="flex items-center justify-between">
+        <div className="flex justify-end space-x-3">
           <button
             type="submit"
             disabled={submitting}

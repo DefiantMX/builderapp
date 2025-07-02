@@ -1,6 +1,6 @@
 "use client"
 
-import { FileText, Download, Trash2, AlertCircle } from "lucide-react"
+import { FileText, Download, Trash2 } from "lucide-react"
 import { useState } from "react"
 
 type DocumentType = "CONTRACT" | "SUBMITTAL" | "RFI" | "CHANGE_ORDER"

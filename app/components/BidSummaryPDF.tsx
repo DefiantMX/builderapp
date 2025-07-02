@@ -4,13 +4,19 @@ import autoTable from "jspdf-autotable"
 import { Download } from "lucide-react"
 
 type Bid = {
-  id: number
-  contractor: string
+  id: string
+  title: string
+  description: string | null
+  contractorName: string
+  contractorEmail: string
   amount: number
   division: string
+  status: string
   submissionDate: string
-  documentUrl?: string
-  description?: string
+  validUntil: string | null
+  notes: string | null
+  createdAt: string
+  updatedAt: string
 }
 
 type BidSummaryPDFProps = {
@@ -52,18 +58,22 @@ export default function BidSummaryPDF({ selectedBids, divisions, projectId, proj
 
       // Create table data
       const tableData = bids.map((bid) => [
-        bid.contractor,
+        bid.title,
+        bid.contractorName,
+        bid.contractorEmail,
         `$${bid.amount.toLocaleString()}`,
         new Date(bid.submissionDate).toLocaleDateString(),
+        bid.status,
         bid.description || "-",
+        bid.notes || "-",
       ])
 
       // Add table
       autoTable(doc, {
         startY: yOffset + 5,
-        head: [["Contractor", "Amount", "Submission Date", "Description"]],
+        head: [["Title", "Contractor", "Contractor Email", "Amount", "Submission Date", "Status", "Description", "Notes"]],
         body: tableData,
-        foot: [["Division Total", `$${divisionTotal.toLocaleString()}`, "", ""]],
+        foot: [["Division Total", `$${divisionTotal.toLocaleString()}`, "", "", "", "", "", ""]],
         theme: "striped",
         headStyles: { fillColor: [66, 66, 66] },
         footStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: "bold" },

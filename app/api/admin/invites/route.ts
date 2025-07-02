@@ -1,20 +1,23 @@
 import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import crypto from "crypto"
+import { PrismaClient } from "@prisma/client"
+
+const prisma = new PrismaClient()
 
 // This is a mock invitation database. In a real application, you'd use a proper database.
 const invitations: any[] = []
 
-export async function GET(request: Request) {
-  // Check if user is admin
-  const userId = cookies().get("user_id")?.value
-  if (!userId) {
-    return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
+export async function GET() {
+  try {
+    const invites = await prisma.invitation.findMany({
+      orderBy: { createdAt: 'desc' }
+    })
+    return NextResponse.json(invites)
+  } catch (error) {
+    console.error("Error fetching invites:", error)
+    return NextResponse.json({ error: "Error fetching invites" }, { status: 500 })
   }
-
-  // In a real app, we would check if the user is an admin
-
-  return NextResponse.json(invitations)
 }
 
 export async function POST(request: Request) {

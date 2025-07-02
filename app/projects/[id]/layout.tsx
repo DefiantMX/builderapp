@@ -1,42 +1,45 @@
-import { getServerSession } from "next-auth/next"
-import { authOptions } from "@/app/api/auth/[...nextauth]/route"
 import { redirect } from "next/navigation"
-import { prisma } from "@/lib/prisma"
-import ProjectNavWrapper from "@/app/components/ProjectNavWrapper"
+import { auth } from "@/lib/auth"
+import { db } from "@/lib/db"
+import ProjectNav from "@/app/components/ProjectNav"
 
-interface Props {
+export default async function ProjectLayout({
+  children,
+  params
+}: {
   children: React.ReactNode
-  params: {
-    id: string
-  }
-}
-
-export default async function ProjectLayout({ children, params }: Props) {
-  const session = await getServerSession(authOptions)
-  if (!session?.user) {
+  params: { id: string }
+}) {
+  const session = await auth()
+  
+  if (!session || !session.user) {
     redirect("/login")
   }
 
-  const project = await prisma.project.findUnique({
-    where: { id: Number(params.id) }
+  const userId = session.user.id
+  const projectId = params.id
+
+  if (!projectId) {
+    redirect("/projects")
+  }
+
+  const project = await db.project.findUnique({
+    where: {
+      id: projectId,
+      userId
+    }
   })
 
   if (!project) {
     redirect("/projects")
   }
 
-  if (project.userId !== session.user.id) {
-    redirect("/projects")
-  }
-
   return (
-    <div>
-      <div className="bg-white shadow">
-        <div className="container mx-auto px-4">
-          <ProjectNavWrapper projectId={params.id} />
-        </div>
+    <div className="container mx-auto px-4 py-8">
+      <ProjectNav project={project} />
+      <div className="mt-6">
+        {children}
       </div>
-      <main>{children}</main>
     </div>
   )
 } 

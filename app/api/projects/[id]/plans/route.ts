@@ -1,113 +1,120 @@
-import { NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "../../../auth/[...nextauth]/route"
-import { prisma } from "@/lib/prisma"
+import { NextRequest, NextResponse } from "next/server"
+import { db } from "@/lib/db"
+import { auth } from "@/lib/auth"
 import { writeFile } from "fs/promises"
 import path from "path"
 
 export async function GET(
-  request: Request,
+  req: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    const session = await auth()
+    
+    if (!session || !session.user) {
+      return NextResponse.json(
+        { error: "Authentication required" },
+        { status: 401 }
+      )
     }
 
-    // First verify that the project belongs to the user
-    const project = await prisma.project.findFirst({
+    const userId = session.user.id
+    const projectId = params.id
+
+    // Verify project ownership
+    const project = await db.project.findUnique({
       where: {
-        id: parseInt(params.id),
-        userId: session.user.id,
-      },
+        id: projectId,
+        userId
+      }
     })
 
     if (!project) {
-      return NextResponse.json({ error: "Project not found" }, { status: 404 })
+      return NextResponse.json(
+        { error: "Project not found" },
+        { status: 404 }
+      )
     }
 
-    // Get all plans for the project
-    const plans = await prisma.plan.findMany({
+    // Get plans for this project
+    const plans = await db.plan.findMany({
       where: {
-        projectId: parseInt(params.id),
+        projectId
       },
       orderBy: {
-        createdAt: "desc",
-      },
+        updatedAt: 'desc'
+      }
     })
 
     return NextResponse.json(plans)
   } catch (error) {
     console.error("Error fetching plans:", error)
     return NextResponse.json(
-      { error: "Error fetching plans" },
+      { error: "Failed to fetch plans" },
       { status: 500 }
     )
   }
 }
 
 export async function POST(
-  request: Request,
+  req: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    const session = await auth()
+    
+    if (!session || !session.user) {
+      return NextResponse.json(
+        { error: "Authentication required" },
+        { status: 401 }
+      )
     }
 
-    // First verify that the project belongs to the user
-    const project = await prisma.project.findFirst({
+    const userId = session.user.id
+    const projectId = params.id
+
+    // Verify project ownership
+    const project = await db.project.findUnique({
       where: {
-        id: parseInt(params.id),
-        userId: session.user.id,
-      },
+        id: projectId,
+        userId
+      }
     })
 
     if (!project) {
-      return NextResponse.json({ error: "Project not found" }, { status: 404 })
+      return NextResponse.json(
+        { error: "Project not found" },
+        { status: 404 }
+      )
     }
 
-    const formData = await request.formData()
-    const file = formData.get("file") as File
-    const title = formData.get("title") as string || file.name
-    const description = formData.get("description") as string || ""
+    // Parse request body
+    const { title, description, fileUrl, fileType } = await req.json()
 
-    if (!file) {
-      return NextResponse.json({ error: "No file provided" }, { status: 400 })
+    // Validate required fields
+    if (!title || !fileUrl || !fileType) {
+      return NextResponse.json(
+        { error: "Missing required fields" },
+        { status: 400 }
+      )
     }
 
-    // Create a unique filename
-    const timestamp = Date.now()
-    const filename = `${timestamp}-${file.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`
-    const uploadDir = path.join(process.cwd(), "public", "uploads")
-    const filepath = path.join(uploadDir, filename)
-
-    // Convert the file to a Buffer and write it
-    const bytes = await file.arrayBuffer()
-    const buffer = Buffer.from(bytes)
-    const uint8Array = new Uint8Array(buffer)
-    await writeFile(filepath, uint8Array)
-
-    // Create the plan record in the database
-    const plan = await prisma.plan.create({
+    // Create new plan
+    const plan = await db.plan.create({
       data: {
         title,
         description,
-        fileUrl: `/uploads/${filename}`,
-        fileType: file.type,
-        projectId: parseInt(params.id),
-      },
+        fileUrl,
+        fileType,
+        projectId
+      }
     })
 
     return NextResponse.json(plan, { status: 201 })
   } catch (error) {
     console.error("Error creating plan:", error)
     return NextResponse.json(
-      { error: "Error creating plan" },
+      { error: "Failed to create plan" },
       { status: 500 }
     )
   }

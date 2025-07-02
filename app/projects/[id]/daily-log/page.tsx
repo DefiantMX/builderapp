@@ -1,13 +1,15 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import Link from "next/link"
 import Image from "next/image"
-import DailyLogForm from "../../../components/DailyLogForm"
+import DailyLogForm from "@/app/components/DailyLogForm"
 import { Sun, FileText, AlertTriangle, User, Calendar, ChevronDown, ChevronUp } from "lucide-react"
+import { format } from "date-fns"
 
-type DailyLogEntry = {
-  id: number
+interface DailyLogEntry {
+  id: string
   date: string
   content: string
   author: string
@@ -16,28 +18,59 @@ type DailyLogEntry = {
   imageUrl?: string
 }
 
-export default function DailyLog({ params }: { params: { id: string } }) {
-  const [entries, setEntries] = useState<DailyLogEntry[]>([])
+interface Project {
+  id: string
+  name: string
+  description: string | null
+  userId: string
+  createdAt: Date
+  updatedAt: Date
+  dailyLogs: DailyLogEntry[]
+}
+
+export default function DailyLogPage({ params }: { params: { id: string } }) {
+  const router = useRouter()
+  const [project, setProject] = useState<Project | null>(null)
+  const [loading, setLoading] = useState(true)
   const [expandedEntries, setExpandedEntries] = useState<number[]>([])
 
   useEffect(() => {
-    fetchEntries()
-  }, [])
-
-  const fetchEntries = async () => {
-    try {
-      const response = await fetch(`/api/projects/${params.id}/daily-log`)
-      if (response.ok) {
+    const fetchProject = async () => {
+      try {
+        const response = await fetch(`/api/projects/${params.id}`)
+        if (!response.ok) {
+          router.push('/projects')
+          return
+        }
         const data = await response.json()
-        setEntries(data)
+        setProject(data)
+      } catch (error) {
+        console.error('Error fetching project:', error)
+        router.push('/projects')
+      } finally {
+        setLoading(false)
       }
-    } catch (error) {
-      console.error("Error fetching daily log entries:", error)
     }
+
+    fetchProject()
+  }, [params.id, router])
+
+  if (loading) {
+    return <div className="container mx-auto px-4 py-8">Loading...</div>
   }
 
-  const handleNewEntry = (newEntry: DailyLogEntry) => {
-    setEntries([newEntry, ...entries])
+  if (!project) {
+    return null
+  }
+
+  const handleNewEntry = (entry: DailyLogEntry) => {
+    setProject(prev => {
+      if (!prev) return null
+      return {
+        ...prev,
+        dailyLogs: [...prev.dailyLogs, entry]
+      }
+    })
   }
 
   const toggleExpand = (id: number) => {
@@ -45,75 +78,65 @@ export default function DailyLog({ params }: { params: { id: string } }) {
   }
 
   return (
-    <div className="container mx-auto p-4">
-      <h1 className="text-3xl font-bold mb-8 text-gray-800">Daily Log for Project {params.id}</h1>
-      <DailyLogForm projectId={params.id} onNewEntry={handleNewEntry} />
-      <div className="mt-12">
-        <h2 className="text-2xl font-bold mb-6 text-gray-800">Entries</h2>
-        {entries.length === 0 ? (
-          <p className="text-gray-600">No entries yet.</p>
+    <div className="container mx-auto px-4 py-8">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold">Daily Log</h1>
+      </div>
+
+      <DailyLogForm projectId={project.id} onNewEntry={handleNewEntry} />
+
+      <div className="mt-8">
+        <h2 className="text-xl font-semibold mb-4">Log Entries</h2>
+        {(!project.dailyLogs || project.dailyLogs.length === 0) ? (
+          <div className="text-center py-12">
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No log entries yet</h3>
+            <p className="text-gray-500">Add your first log entry to get started</p>
+          </div>
         ) : (
-          <ul className="space-y-6">
-            {entries.map((entry) => (
-              <li key={entry.id} className="bg-white shadow-lg rounded-lg overflow-hidden">
-                <div className="p-6">
-                  <div className="flex justify-between items-start mb-4">
-                    <div>
-                      <p className="font-bold text-lg text-gray-800 flex items-center">
-                        <Calendar className="mr-2" size={18} />
-                        {new Date(entry.date).toLocaleString()}
-                      </p>
-                      <p className="text-sm text-gray-600 flex items-center mt-1">
-                        <User className="mr-2" size={16} />
-                        {entry.author}
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => toggleExpand(entry.id)}
-                      className="text-blue-500 hover:text-blue-700 focus:outline-none"
-                    >
-                      {expandedEntries.includes(entry.id) ? <ChevronUp size={24} /> : <ChevronDown size={24} />}
-                    </button>
+          <div className="space-y-6">
+            {project.dailyLogs.map((entry) => (
+              <div key={entry.id} className="bg-white shadow-lg rounded-lg p-6">
+                <div className="flex justify-between items-start mb-4">
+                  <div>
+                    <h3 className="text-lg font-medium text-gray-900">
+                      {format(new Date(entry.date), 'MMMM d, yyyy')}
+                    </h3>
+                    <p className="text-sm text-gray-500">By {entry.author}</p>
                   </div>
-                  <div className="flex items-center text-gray-700 mb-2">
-                    <Sun className="mr-2" size={18} />
-                    <p>{entry.currentConditions}</p>
+                  <div className="text-sm text-gray-500">
+                    {format(new Date(entry.date), 'h:mm a')}
                   </div>
-                  {expandedEntries.includes(entry.id) && (
-                    <>
-                      <div className="mt-4">
-                        <p className="font-semibold flex items-center text-gray-700 mb-2">
-                          <FileText className="mr-2" size={18} />
-                          Log Entry:
-                        </p>
-                        <p className="text-gray-600">{entry.content}</p>
-                      </div>
-                      {entry.incidentReport && (
-                        <div className="mt-4">
-                          <p className="font-semibold flex items-center text-gray-700 mb-2">
-                            <AlertTriangle className="mr-2" size={18} />
-                            Incident Report:
-                          </p>
-                          <p className="text-gray-600">{entry.incidentReport}</p>
-                        </div>
-                      )}
-                      {entry.imageUrl && (
-                        <div className="mt-4">
-                          <Image
-                            src={entry.imageUrl || "/placeholder.svg"}
-                            alt="Daily log image"
-                            width={400}
-                            height={300}
-                            className="rounded-lg object-cover"
-                          />
-                        </div>
-                      )}
-                    </>
-                  )}
                 </div>
-              </li>
+                
+                <div className="mb-4">
+                  <h4 className="text-sm font-medium text-gray-700 mb-1">Current Conditions</h4>
+                  <p className="text-gray-600">{entry.currentConditions}</p>
+                </div>
+
+                <div className="mb-4">
+                  <h4 className="text-sm font-medium text-gray-700 mb-1">Log Entry</h4>
+                  <p className="text-gray-600 whitespace-pre-wrap">{entry.content}</p>
+                </div>
+
+                {entry.incidentReport && (
+                  <div className="mb-4">
+                    <h4 className="text-sm font-medium text-gray-700 mb-1">Incident Report</h4>
+                    <p className="text-gray-600 whitespace-pre-wrap">{entry.incidentReport}</p>
+                  </div>
+                )}
+
+                {entry.imageUrl && (
+                  <div className="mt-4">
+                    <img
+                      src={entry.imageUrl}
+                      alt="Daily log image"
+                      className="max-w-full h-auto rounded-lg shadow-md"
+                    />
+                  </div>
+                )}
+              </div>
             ))}
-          </ul>
+          </div>
         )}
       </div>
       <Link

@@ -1,48 +1,52 @@
 import { NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "../../../auth/[...nextauth]/route"
-import { prisma } from "@/lib/prisma"
+import { auth } from "@/lib/auth"
+import { db } from "@/lib/db"
+
+// Define the Bid type to match our schema
+type Bid = {
+  title: string
+  description?: string
+  contractorName: string
+  contractorEmail: string
+  amount: number
+  division: string
+  status?: string
+  validUntil?: Date
+  notes?: string
+  projectId: string
+}
 
 export async function GET(
   request: Request,
   { params }: { params: { id: string } }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    const session = await auth()
+    if (!session) {
+      return new NextResponse('Unauthorized', { status: 401 })
     }
 
-    // First verify that the project belongs to the user
-    const project = await prisma.project.findFirst({
+    const project = await db.project.findFirst({
       where: {
-        id: parseInt(params.id),
-        userId: session.user.id,
-      },
+        id: params.id,
+        userId: session.user.id
+      }
     })
 
     if (!project) {
-      return NextResponse.json({ error: "Project not found" }, { status: 404 })
+      return new NextResponse('Project not found', { status: 404 })
     }
 
-    // Get all bids for the project
-    const bids = await prisma.bid.findMany({
+    const bids = await db.bid.findMany({
       where: {
-        projectId: parseInt(params.id),
-      },
-      orderBy: {
-        submissionDate: "desc",
-      },
+        projectId: params.id
+      }
     })
 
     return NextResponse.json(bids)
   } catch (error) {
-    console.error("Error fetching bids:", error)
-    return NextResponse.json(
-      { error: "Error fetching bids" },
-      { status: 500 }
-    )
+    console.error('Error in GET /api/projects/[id]/bids:', error)
+    return new NextResponse('Internal Server Error', { status: 500 })
   }
 }
 
@@ -51,16 +55,16 @@ export async function POST(
   { params }: { params: { id: string } }
 ) {
   try {
-    const session = await getServerSession(authOptions)
+    const session = await auth()
 
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
     // First verify that the project belongs to the user
-    const project = await prisma.project.findFirst({
+    const project = await db.project.findFirst({
       where: {
-        id: parseInt(params.id),
+        id: params.id,
         userId: session.user.id,
       },
     })
@@ -75,20 +79,22 @@ export async function POST(
       contractorName,
       contractorEmail,
       amount,
+      division,
       validUntil,
       notes,
     } = await request.json()
 
-    const bid = await prisma.bid.create({
+    const bid = await db.bid.create({
       data: {
         title,
         description,
         contractorName,
         contractorEmail,
         amount,
+        division,
         validUntil: validUntil ? new Date(validUntil) : null,
         notes,
-        projectId: parseInt(params.id),
+        projectId: params.id,
       },
     })
 

@@ -20,7 +20,7 @@ export default function UserInvitations() {
   const [role, setRole] = useState<UserRole>(UserRole.Contractor)
   const [projectId, setProjectId] = useState<string>("")
   const [sending, setSending] = useState(false)
-  const [projects, setProjects] = useState(projectStore.getAllProjects())
+  const [projects] = useState<Project[]>([])
 
   // Redirect if not admin
   useEffect(() => {
@@ -69,6 +69,10 @@ export default function UserInvitations() {
   const handleResendInvite = (inviteId: number) => {
     // In a real app, we would call an API to resend the invitation
     alert("Invitation resent successfully!")
+  }
+
+  const handleAcceptInvite = async () => {
+    // ... existing code ...
   }
 
   if (loading) {

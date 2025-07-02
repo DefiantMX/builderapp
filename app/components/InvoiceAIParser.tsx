@@ -4,8 +4,9 @@ import type React from "react"
 
 import { useState, useRef } from "react"
 import { FileText, Loader2, Check, AlertTriangle } from "lucide-react"
-import { generateText } from "ai"
-import { openai } from "@ai-sdk/openai"
+import { GoogleGenerativeAI } from "@google/generative-ai"
+
+const genAI = new GoogleGenerativeAI(process.env.NEXT_PUBLIC_GEMINI_API_KEY || "");
 
 type ParsedInvoice = {
   vendor?: string
@@ -116,7 +117,9 @@ Total Due: $37,800`
       let parsedData
 
       try {
-        // Use AI to parse the invoice text
+        // Use Gemini to parse the invoice text
+        const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+        
         const prompt = `
 You are an AI assistant specialized in parsing construction invoices. Extract the following information from this invoice text:
 1. Vendor/Company name
@@ -139,15 +142,14 @@ Invoice text:
 ${invoiceText}
 `
 
-        const { text } = await generateText({
-          model: openai("gpt-4o"),
-          prompt: prompt,
-        })
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        const text = response.text();
 
         // Parse the JSON response
-        parsedData = JSON.parse(text)
+        parsedData = JSON.parse(text);
       } catch (err) {
-        console.error("OpenAI API error:", err)
+        console.error("Gemini API error:", err)
         // Fallback to mock data if API call fails
         parsedData = {
           vendor: "ABC Construction Supplies",
@@ -239,10 +241,10 @@ ${invoiceText}
       <p className="text-xs text-gray-500 mt-4">
         Note: AI extraction works best with clear, well-formatted invoices. You can always adjust the details manually
         if needed.
-        {!process.env.OPENAI_API_KEY && !process.env.NEXT_PUBLIC_OPENAI_API_KEY && (
+        {!process.env.NEXT_PUBLIC_GEMINI_API_KEY && (
           <span className="block mt-1 text-amber-600">
-            ⚠️ OpenAI API key not detected. Using mock data for demonstration purposes. To enable AI features, add
-            OPENAI_API_KEY to your environment variables.
+            ⚠️ Google Gemini API key not detected. Using mock data for demonstration purposes. To enable AI features, add
+            NEXT_PUBLIC_GEMINI_API_KEY to your environment variables.
           </span>
         )}
       </p>

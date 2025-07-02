@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
+import bcrypt from "bcrypt"
+import { PrismaClient } from "@prisma/client"
+
+const prisma = new PrismaClient()
 
 // This is a mock user database. In a real application, you'd use a proper database.
 const users: any[] = [
@@ -13,28 +17,50 @@ const users: any[] = [
 ]
 
 export async function POST(request: Request) {
-  const { email, password } = await request.json()
+  try {
+    const { email, password } = await request.json()
 
-  // Find user
-  const user = users.find((user) => user.email === email)
+    console.log("Login attempt for email:", email)
 
-  if (!user) {
-    return NextResponse.json({ message: "User not found" }, { status: 401 })
+    // Validate credentials
+    const user = await prisma.user.findUnique({
+      where: { email }
+    })
+
+    if (!user || !user.password) {
+      console.log("User not found or password missing for email:", email)
+      return NextResponse.json({ error: "Invalid credentials" }, { status: 401 })
+    }
+
+    // Verify password
+    const isValid = await bcrypt.compare(password, user.password)
+
+    if (!isValid) {
+      console.log("Invalid password for email:", email)
+      return NextResponse.json({ error: "Invalid credentials" }, { status: 401 })
+    }
+
+    // Create session
+    const session = await prisma.session.create({
+      data: {
+        userId: user.id,
+        expires: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // 30 days
+      }
+    })
+
+    console.log("Login successful for email:", email, "Session token:", session.id)
+
+    return NextResponse.json({ 
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name
+      },
+      sessionToken: session.id
+    })
+  } catch (error) {
+    console.error("Login error:", error)
+    return NextResponse.json({ error: "Login failed" }, { status: 500 })
   }
-
-  if (user.password !== password) {
-    return NextResponse.json({ message: "Incorrect password" }, { status: 401 })
-  }
-
-  if (!user.verified) {
-    return NextResponse.json({ message: "Please verify your email before logging in" }, { status: 403 })
-  }
-
-  // Set a cookie to maintain the session
-  cookies().set("user_id", user.id.toString(), { httpOnly: true })
-
-  // Return user data (excluding password and sensitive information)
-  const { password: _, ...userData } = user
-  return NextResponse.json(userData)
 }
 

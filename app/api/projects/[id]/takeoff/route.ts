@@ -1,14 +1,26 @@
 import { NextResponse } from "next/server"
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import type { Measurement } from '@prisma/client'
 
-// This is a mock database. In a real application, you'd use a proper database.
-const measurements: any[] = []
+type Plan = {
+  id: number;
+  title: string;
+  description: string | null;
+  fileUrl: string;
+  fileType: string;
+  projectId: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+type MeasurementWithPlan = Measurement & {
+  plan: Plan;
+}
 
 export async function GET(request: Request, { params }: { params: { id: string } }) {
   try {
-    const session = await getServerSession(authOptions)
+    const session = await auth()
     if (!session) {
       return new NextResponse('Unauthorized', { status: 401 })
     }
@@ -25,20 +37,22 @@ export async function GET(request: Request, { params }: { params: { id: string }
       return new NextResponse('Project not found', { status: 404 })
     }
 
-    // Get all takeoffs for the project
-    const takeoffs = await prisma.takeoff.findMany({
+    // Get all measurements for plans in this project
+    const measurements = await prisma.measurement.findMany({
       where: {
-        projectId: parseInt(params.id),
-      },
-      include: {
-        items: true,
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
+        plan: {
+          projectId: parseInt(params.id)
+        }
+      }
     })
 
-    return NextResponse.json(takeoffs)
+    // Parse points for each measurement
+    const parsedMeasurements = measurements.map(m => ({
+      ...m,
+      points: JSON.parse(m.points)
+    }))
+
+    return NextResponse.json(parsedMeasurements)
   } catch (error) {
     console.error('Error in GET /api/projects/[id]/takeoff:', error)
     return new NextResponse('Internal Server Error', { status: 500 })
@@ -47,7 +61,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
 
 export async function POST(request: Request, { params }: { params: { id: string } }) {
   try {
-    const session = await getServerSession(authOptions)
+    const session = await auth()
     if (!session) {
       return new NextResponse('Unauthorized', { status: 401 })
     }
@@ -64,25 +78,64 @@ export async function POST(request: Request, { params }: { params: { id: string 
       return new NextResponse('Project not found', { status: 404 })
     }
 
-    const json = await request.json()
-    const { title, description, category } = json
-
-    const takeoff = await prisma.takeoff.create({
+    const data = await request.json()
+    
+    // Stringify points before saving
+    const measurement = await prisma.measurement.create({
       data: {
-        title,
-        description,
-        category,
-        status: 'In Progress',
-        projectId: parseInt(params.id),
-      },
-      include: {
-        items: true,
+        ...data,
+        points: JSON.stringify(data.points)
+      }
+    })
+
+    // Parse points back to array before sending response
+    return NextResponse.json({
+      ...measurement,
+      points: JSON.parse(measurement.points)
+    })
+  } catch (error) {
+    console.error('Error in POST /api/projects/[id]/takeoff:', error)
+    return new NextResponse('Internal Server Error', { status: 500 })
+  }
+}
+
+export async function DELETE(request: Request, { params }: { params: { id: string } }) {
+  try {
+    const session = await auth()
+    if (!session) {
+      return new NextResponse('Unauthorized', { status: 401 })
+    }
+
+    // Get measurementId from query params
+    const { searchParams } = new URL(request.url)
+    const measurementId = searchParams.get('measurementId')
+
+    if (!measurementId) {
+      return new NextResponse('Measurement ID is required', { status: 400 })
+    }
+
+    // Verify project ownership
+    const project = await prisma.project.findUnique({
+      where: {
+        id: parseInt(params.id),
+        userId: session.user.id,
       },
     })
 
-    return NextResponse.json(takeoff, { status: 201 })
+    if (!project) {
+      return new NextResponse('Project not found', { status: 404 })
+    }
+
+    // Delete the measurement
+    await prisma.measurement.delete({
+      where: {
+        id: parseInt(measurementId)
+      }
+    })
+
+    return new NextResponse(null, { status: 204 })
   } catch (error) {
-    console.error('Error in POST /api/projects/[id]/takeoff:', error)
+    console.error('Error in DELETE /api/projects/[id]/takeoff:', error)
     return new NextResponse('Internal Server Error', { status: 500 })
   }
 }

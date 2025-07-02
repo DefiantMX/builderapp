@@ -20,6 +20,9 @@ type AuthContextType = {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
+// Base URL for API requests
+const API_BASE_URL = "http://localhost:3000";
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
 
@@ -27,7 +30,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Check if user is logged in on initial load
     const checkLoggedIn = async () => {
       try {
-        const response = await fetch("/api/user")
+        const response = await fetch(`${API_BASE_URL}/api/user`)
         if (response.ok) {
           const userData = await response.json()
           setUser(userData)
@@ -45,7 +48,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = async () => {
     try {
-      const response = await fetch("/api/logout", { method: "POST" })
+      const response = await fetch(`${API_BASE_URL}/api/logout`, { method: "POST" })
       if (response.ok) {
         setUser(null)
       }

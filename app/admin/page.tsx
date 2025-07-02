@@ -1,69 +1,34 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import Link from "next/link"
+import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { useAuth } from "../contexts/AuthContext"
+import { auth } from "@/lib/auth"
+import { redirect } from "next/navigation"
+import Link from "next/link"
 import { UserRole } from "@/lib/permissions"
 import { Users, UserPlus, Settings, Shield } from "lucide-react"
 
-export default function AdminDashboard() {
-  const { user } = useAuth()
-  const router = useRouter()
-
-  // Redirect if not admin
-  useEffect(() => {
-    if (user && user.role !== UserRole.Admin) {
-      router.push("/")
-    }
-  }, [user, router])
-
-  if (!user) {
-    return <div className="container mx-auto p-4">Loading...</div>
+export default async function AdminPage() {
+  const session = await auth()
+  
+  if (!session) {
+    redirect("/login")
   }
 
   return (
-    <div className="container mx-auto p-4">
+    <div className="container mx-auto px-4 py-8">
       <h1 className="text-3xl font-bold mb-8">Admin Dashboard</h1>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <Link href="/admin/users" className="bg-white shadow-md rounded-lg p-6 hover:shadow-lg transition duration-300">
-          <div className="flex items-center mb-4">
-            <Users className="h-8 w-8 text-blue-500 mr-3" />
-            <h2 className="text-xl font-semibold">Manage Users</h2>
-          </div>
-          <p className="text-gray-600">View, edit, and manage user accounts and permissions.</p>
-        </Link>
-
-        <Link
-          href="/admin/invites"
-          className="bg-white shadow-md rounded-lg p-6 hover:shadow-lg transition duration-300"
-        >
-          <div className="flex items-center mb-4">
-            <UserPlus className="h-8 w-8 text-green-500 mr-3" />
-            <h2 className="text-xl font-semibold">User Invitations</h2>
-          </div>
-          <p className="text-gray-600">Send invitations to new users and manage pending invites.</p>
-        </Link>
-
-        <Link href="/admin/roles" className="bg-white shadow-md rounded-lg p-6 hover:shadow-lg transition duration-300">
-          <div className="flex items-center mb-4">
-            <Shield className="h-8 w-8 text-purple-500 mr-3" />
-            <h2 className="text-xl font-semibold">Roles & Permissions</h2>
-          </div>
-          <p className="text-gray-600">Configure user roles and their associated permissions.</p>
-        </Link>
-
-        <Link
-          href="/admin/settings"
-          className="bg-white shadow-md rounded-lg p-6 hover:shadow-lg transition duration-300"
-        >
-          <div className="flex items-center mb-4">
-            <Settings className="h-8 w-8 text-gray-500 mr-3" />
-            <h2 className="text-xl font-semibold">System Settings</h2>
-          </div>
-          <p className="text-gray-600">Configure global system settings and preferences.</p>
-        </Link>
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div>
+          <h2 className="text-2xl font-semibold mb-4">Quick Actions</h2>
+          {/* Add quick action buttons */}
+        </div>
+        
+        <div>
+          <h2 className="text-2xl font-semibold mb-4">Recent Activity</h2>
+          {/* Add recent activity list */}
+        </div>
       </div>
     </div>
   )

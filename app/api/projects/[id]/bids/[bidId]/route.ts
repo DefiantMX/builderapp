@@ -1,62 +1,40 @@
 import { NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "../../../../auth/[...nextauth]/route"
-import { prisma } from "@/lib/prisma"
+import { auth } from "@/lib/auth"
+import { db } from "@/lib/db"
 
 export async function PUT(
   request: Request,
   { params }: { params: { id: string; bidId: string } }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-
+    const session = await auth()
     if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+      return new NextResponse('Unauthorized', { status: 401 })
     }
 
-    // First verify that the project belongs to the user
-    const project = await prisma.project.findFirst({
+    const bid = await db.bid.findFirst({
       where: {
-        id: parseInt(params.id),
-        userId: session.user.id,
-      },
+        id: params.bidId,
+        projectId: params.id
+      }
     })
 
-    if (!project) {
-      return NextResponse.json({ error: "Project not found" }, { status: 404 })
-    }
-
-    // Then verify that the bid belongs to the project
-    const existingBid = await prisma.bid.findFirst({
-      where: {
-        id: parseInt(params.bidId),
-        projectId: parseInt(params.id),
-      },
-    })
-
-    if (!existingBid) {
-      return NextResponse.json({ error: "Bid not found" }, { status: 404 })
+    if (!bid) {
+      return new NextResponse('Bid not found', { status: 404 })
     }
 
     const updates = await request.json()
-
-    const updatedBid = await prisma.bid.update({
+    const updatedBid = await db.bid.update({
       where: {
-        id: parseInt(params.bidId),
+        id: params.bidId
       },
-      data: {
-        ...updates,
-        validUntil: updates.validUntil ? new Date(updates.validUntil) : existingBid.validUntil,
-      },
+      data: updates
     })
 
     return NextResponse.json(updatedBid)
   } catch (error) {
-    console.error("Error updating bid:", error)
-    return NextResponse.json(
-      { error: "Error updating bid" },
-      { status: 500 }
-    )
+    console.error('Error in PUT /api/projects/[id]/bids/[bidId]:', error)
+    return new NextResponse('Internal Server Error', { status: 500 })
   }
 }
 
@@ -65,48 +43,31 @@ export async function DELETE(
   { params }: { params: { id: string; bidId: string } }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-
+    const session = await auth()
     if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+      return new NextResponse('Unauthorized', { status: 401 })
     }
 
-    // First verify that the project belongs to the user
-    const project = await prisma.project.findFirst({
+    const bid = await db.bid.findFirst({
       where: {
-        id: parseInt(params.id),
-        userId: session.user.id,
-      },
-    })
-
-    if (!project) {
-      return NextResponse.json({ error: "Project not found" }, { status: 404 })
-    }
-
-    // Then verify that the bid belongs to the project
-    const bid = await prisma.bid.findFirst({
-      where: {
-        id: parseInt(params.bidId),
-        projectId: parseInt(params.id),
-      },
+        id: params.bidId,
+        projectId: params.id
+      }
     })
 
     if (!bid) {
-      return NextResponse.json({ error: "Bid not found" }, { status: 404 })
+      return new NextResponse('Bid not found', { status: 404 })
     }
 
-    await prisma.bid.delete({
+    await db.bid.delete({
       where: {
-        id: parseInt(params.bidId),
-      },
+        id: params.bidId
+      }
     })
 
-    return NextResponse.json({ message: "Bid deleted successfully" })
+    return new NextResponse(null, { status: 204 })
   } catch (error) {
-    console.error("Error deleting bid:", error)
-    return NextResponse.json(
-      { error: "Error deleting bid" },
-      { status: 500 }
-    )
+    console.error('Error in DELETE /api/projects/[id]/bids/[bidId]:', error)
+    return new NextResponse('Internal Server Error', { status: 500 })
   }
 } 

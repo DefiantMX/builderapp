@@ -9,23 +9,23 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "mysql"
   url      = env("DATABASE_URL")
 }
 
 model Account {
   id                String  @id @default(cuid())
   userId            String
-  type             String
-  provider         String
+  type              String
+  provider          String
   providerAccountId String
-  refresh_token    String? @db.Text
-  access_token     String? @db.Text
-  expires_at       Int?
-  token_type       String?
-  scope            String?
-  id_token         String? @db.Text
-  session_state    String?
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -54,95 +54,128 @@ model User {
   projects      Project[]
 }
 
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
 model Project {
-  id          Int           @id @default(autoincrement())
+  id          String    @id @default(cuid())
   name        String
   description String?
-  status      String        @default("Not Started")
-  startDate   DateTime?
-  endDate     DateTime?
-  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId      String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  // Relation to User model
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Relations to other models
   tasks       Task[]
   plans       Plan[]
   events      Event[]
   bids        Bid[]
   takeoffs    Takeoff[]
   invoices    Invoice[]
-  budgets     Budget[]
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  budget      Budget?
+  documents   Document[]
+  dailyLogs   DailyLog[]
+  draws       Draw[]
 }
 
 model Task {
-  id          Int       @id @default(autoincrement())
+  id          String    @id @default(cuid())
   title       String
   description String?
   status      String    @default("Todo")
   dueDate     DateTime?
   project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  projectId   Int
+  projectId   String
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 }
 
 model Plan {
-  id          Int       @id @default(autoincrement())
-  title       String
-  description String?
-  fileUrl     String
-  fileType    String
-  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  projectId   Int
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id           String        @id @default(cuid())
+  title        String
+  description  String?
+  fileUrl      String
+  fileType     String
+  project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId    String
+  measurements Measurement[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+}
+
+model Measurement {
+  id           String   @id @default(cuid())
+  planId       String
+  type         String   // "length" or "area"
+  label        String
+  value        Float
+  unit         String   // "ft" or "sq ft"
+  points       String   // JSON string of points array
+  materialType String?  // Material type (e.g., "siding", "concrete", etc.)
+  pricePerUnit Float?   // Price per unit (e.g., price per square foot)
+  plan         Plan     @relation(fields: [planId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }
 
 model Event {
-  id          Int       @id @default(autoincrement())
+  id          String    @id @default(cuid())
   title       String
   description String?
   startDate   DateTime
   endDate     DateTime?
   status      String    @default("Scheduled")
+  percentComplete Int    @default(0)
+  priority    Int       @default(0)
   project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  projectId   Int
+  projectId   String
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+
+  @@index([projectId])
 }
 
 model Bid {
-  id              Int       @id @default(autoincrement())
+  id              String    @id @default(cuid())
   title           String
   description     String?
   contractorName  String
   contractorEmail String
   amount          Float
+  division        String    // Added division field
   status          String    @default("Pending") // Pending, Accepted, Rejected
   submissionDate  DateTime  @default(now())
   validUntil      DateTime?
   notes           String?
   project         Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  projectId       Int
+  projectId       String
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 }
 
 model Takeoff {
-  id          Int           @id @default(autoincrement())
+  id          String        @id @default(cuid())
   title       String
   description String?
   category    String        // e.g., "Concrete", "Electrical", "Plumbing"
   status      String        @default("In Progress") // In Progress, Completed, Verified
   items       TakeoffItem[]
   project     Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  projectId   Int
+  projectId   String
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 }
 
 model TakeoffItem {
-  id          Int      @id @default(autoincrement())
+  id          String   @id @default(cuid())
   description String
   quantity    Float
   unit        String   // e.g., "SF", "LF", "EA", "CY"
@@ -150,42 +183,88 @@ model TakeoffItem {
   notes       String?
   location    String?  // e.g., "First Floor", "Building A", "Room 101"
   takeoff     Takeoff  @relation(fields: [takeoffId], references: [id], onDelete: Cascade)
-  takeoffId   Int
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-}
-
-model Invoice {
-  id          Int      @id @default(autoincrement())
-  division    String   // Division code (e.g., "01", "02", etc.)
-  vendor      String
-  amount      Float
-  date        DateTime
-  description String?
-  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  projectId   Int
+  takeoffId   String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
 
 model Budget {
-  id              Int              @id @default(autoincrement())
+  id              String           @id @default(cuid())
   totalAmount     Float
+  projectId       String           @unique
   project         Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  projectId       Int              @unique // One budget per project
   divisionBudgets DivisionBudget[]
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
 }
 
 model DivisionBudget {
-  id          Int      @id @default(autoincrement())
-  division    String   // Division code (e.g., "01", "02", etc.)
+  id          String   @id @default(cuid())
+  division    String
   amount      Float
+  description String?
+  budgetId    String
   budget      Budget   @relation(fields: [budgetId], references: [id], onDelete: Cascade)
-  budgetId    Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Invoice {
+  id          String   @id @default(cuid())
+  division    String
+  vendor      String
+  amount      Float
+  date        DateTime
+  description String?
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  draws       Draw[]   @relation("DrawInvoices")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Document {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  fileUrl     String
+  fileType    String   @default("application/pdf")
+  category    String   // e.g., "Contract", "Permit", "Insurance", etc.
+  status      String   @default("pending") // pending, approved, rejected
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId   String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  @@unique([budgetId, division]) // Each division can only have one budget per project
+  @@index([projectId])
+}
+
+model DailyLog {
+  id                String    @id @default(cuid())
+  date              DateTime  @default(now())
+  content           String
+  author            String
+  currentConditions String
+  incidentReport    String?
+  imageUrl          String?
+  project           Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId         String
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+model Draw {
+  id          String    @id @default(cuid())
+  drawNumber  Int
+  date        DateTime
+  amount      Float
+  status      String    @default("Pending") // Pending, Approved, Paid
+  description String?
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId   String
+  invoices    Invoice[] @relation("DrawInvoices")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([projectId])
 }

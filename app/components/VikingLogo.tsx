@@ -1,5 +1,4 @@
 import Image from 'next/image';
-import vikingLogo from '../../../public/viking-builder-logo.png';
 
 interface VikingLogoProps {
   size?: number;
@@ -10,7 +9,7 @@ export default function VikingLogo({ size = 250, className = '' }: VikingLogoPro
   return (
     <div className={`flex justify-center items-center ${className}`}>
       <Image
-        src={vikingLogo}
+        src="/images/viking-builder-logo.jpg"
         alt="Valhalla Builder Logo"
         width={size}
         height={size}
