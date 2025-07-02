@@ -8,7 +8,6 @@ import { useRouter } from "next/navigation"
 import { useAuth } from "../../contexts/AuthContext"
 import { UserRole, invitations } from "@/lib/permissions"
 import { ArrowLeft, Send, RefreshCw, Trash2 } from "lucide-react"
-import { projectStore } from "@/lib/store"
 
 export default function UserInvitations() {
   const { user } = useAuth()
@@ -69,10 +68,6 @@ export default function UserInvitations() {
   const handleResendInvite = (inviteId: number) => {
     // In a real app, we would call an API to resend the invitation
     alert("Invitation resent successfully!")
-  }
-
-  const handleAcceptInvite = async () => {
-    // ... existing code ...
   }
 
   if (loading) {
