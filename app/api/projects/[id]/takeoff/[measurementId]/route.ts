@@ -15,7 +15,7 @@ export async function PATCH(
     // First verify that the project belongs to the user
     const project = await prisma.project.findFirst({
       where: {
-        id: parseInt(params.id),
+        id: params.id,
         userId: session.user.id
       }
     })
@@ -27,9 +27,9 @@ export async function PATCH(
     // Get the measurement and verify it belongs to a plan in this project
     const measurement = await prisma.measurement.findFirst({
       where: {
-        id: parseInt(params.measurementId),
+        id: params.measurementId,
         plan: {
-          projectId: parseInt(params.id)
+          projectId: params.id
         }
       }
     })
@@ -48,7 +48,7 @@ export async function PATCH(
     // Update the measurement
     const updatedMeasurement = await prisma.measurement.update({
       where: {
-        id: parseInt(params.measurementId)
+        id: params.measurementId
       },
       data: {
         ...updates,
