@@ -4,12 +4,12 @@ import { prisma } from '@/lib/prisma'
 import type { Measurement } from '@prisma/client'
 
 type Plan = {
-  id: number;
+  id: string;
   title: string;
   description: string | null;
   fileUrl: string;
   fileType: string;
-  projectId: number;
+  projectId: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -28,7 +28,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
     // Verify project ownership
     const project = await prisma.project.findUnique({
       where: {
-        id: parseInt(params.id),
+        id: params.id,
         userId: session.user.id,
       },
     })
@@ -41,7 +41,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
     const measurements = await prisma.measurement.findMany({
       where: {
         plan: {
-          projectId: parseInt(params.id)
+          projectId: params.id
         }
       }
     })
@@ -69,7 +69,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
     // Verify project ownership
     const project = await prisma.project.findUnique({
       where: {
-        id: parseInt(params.id),
+        id: params.id,
         userId: session.user.id,
       },
     })
@@ -117,7 +117,7 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
     // Verify project ownership
     const project = await prisma.project.findUnique({
       where: {
-        id: parseInt(params.id),
+        id: params.id,
         userId: session.user.id,
       },
     })
@@ -129,7 +129,7 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
     // Delete the measurement
     await prisma.measurement.delete({
       where: {
-        id: parseInt(measurementId)
+        id: measurementId
       }
     })
 

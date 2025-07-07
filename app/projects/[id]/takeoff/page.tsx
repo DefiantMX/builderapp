@@ -8,7 +8,7 @@ import { Upload, FileText, Calculator } from "lucide-react"
 import TakeoffViewer from "../../../components/TakeoffViewer" // Import TakeoffViewer component
 
 type Plan = {
-  id: number
+  id: string
   title: string
   description: string | null
   fileUrl: string
@@ -18,8 +18,8 @@ type Plan = {
 }
 
 type Measurement = {
-  id: number
-  planId: number
+  id: string
+  planId: string
   type: "length" | "area"
   label: string
   value: number
@@ -185,7 +185,7 @@ export default function ProjectTakeoff({ params }: { params: { id: string } }) {
     }
   }
 
-  const handleMeasurementDelete = async (measurementId: number) => {
+  const handleMeasurementDelete = async (measurementId: string) => {
     try {
       console.log('Deleting measurement:', measurementId); // Debug log
       const response = await fetch(`/api/projects/${params.id}/takeoff?measurementId=${measurementId}`, {
@@ -208,7 +208,7 @@ export default function ProjectTakeoff({ params }: { params: { id: string } }) {
     }
   };
 
-  const handleMeasurementUpdate = async (id: number, updates: Partial<Measurement>) => {
+  const handleMeasurementUpdate = async (id: string, updates: Partial<Measurement>) => {
     try {
       console.log('Updating measurement:', id, updates); // Debug log
       const response = await fetch(`/api/projects/${params.id}/takeoff/${id}`, {

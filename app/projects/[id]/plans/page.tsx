@@ -43,7 +43,7 @@ export default async function PlansPage({ params }: { params: { id: string } }) 
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">Project Plans</h1>
         <Link
-          href={`/projects/${params.id}/plans/upload`}
+          href={`/projects/${params.id}/plans/new`}
           className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           Upload Plan
@@ -55,7 +55,7 @@ export default async function PlansPage({ params }: { params: { id: string } }) 
           <h3 className="text-lg font-medium text-gray-900 mb-2">No plans uploaded</h3>
           <p className="text-gray-500 mb-4">Upload your first plan to get started</p>
           <Link
-            href={`/projects/${params.id}/plans/upload`}
+            href={`/projects/${params.id}/plans/new`}
             className="text-blue-600 hover:text-blue-700"
           >
             Upload your first plan →
@@ -104,7 +104,7 @@ export default async function PlansPage({ params }: { params: { id: string } }) 
                     View Plan →
                   </a>
                   <Link
-                    href={`/projects/${params.id}/plans/${plan.id}/measure`}
+                    href={`/projects/${params.id}/takeoff`}
                     className="text-green-600 hover:text-green-700"
                   >
                     Measure →

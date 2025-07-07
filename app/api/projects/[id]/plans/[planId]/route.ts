@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { auth } from "@/lib/auth"
 
 export async function DELETE(
   request: Request,
@@ -15,7 +16,7 @@ export async function DELETE(
     // First verify that the project belongs to the user
     const project = await prisma.project.findFirst({
       where: {
-        id: parseInt(params.id),
+        id: params.id,
         userId: session.user.id,
       },
     })
@@ -27,8 +28,8 @@ export async function DELETE(
     // Then verify that the plan belongs to the project
     const plan = await prisma.plan.findFirst({
       where: {
-        id: parseInt(params.planId),
-        projectId: parseInt(params.id),
+        id: params.planId,
+        projectId: params.id,
       },
     })
 
@@ -40,7 +41,7 @@ export async function DELETE(
 
     await prisma.plan.delete({
       where: {
-        id: parseInt(params.planId),
+        id: params.planId,
       },
     })
 
