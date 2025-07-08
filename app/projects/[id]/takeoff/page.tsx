@@ -1,10 +1,11 @@
 "use client"
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Upload, Ruler, Square, Undo2, Redo2, Download, MousePointerClick, Trash2 } from "lucide-react";
 import TakeoffCanvas, { DrawingMode, Measurement, MeasurementType } from "@/app/components/TakeoffCanvas";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { useSession } from "next-auth/react";
 
 // Extend jsPDF type to include lastAutoTable
 declare module "jspdf" {
@@ -15,82 +16,89 @@ declare module "jspdf" {
   }
 }
 
-// Mock plan data for demonstration
-const mockPlans = [
-  {
-    id: "plan1",
-    title: "Plan 1",
-    fileUrl: "https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=900&q=80",
-  },
-  {
-    id: "plan2",
-    title: "Plan 2",
-    fileUrl: "https://images.unsplash.com/photo-1465101046530-73398c7f28ca?auto=format&fit=crop&w=900&q=80",
-  },
-];
-
-// Utility functions for measurement calculations
-function getLineLength(points: number[]): number {
-  let length = 0;
-  for (let i = 2; i < points.length; i += 2) {
-    const dx = points[i] - points[i - 2];
-    const dy = points[i + 1] - points[i - 1];
-    length += Math.sqrt(dx * dx + dy * dy);
-  }
-  return length;
-}
-
-function getPolygonArea(points: number[]): number {
-  let area = 0;
-  const n = points.length / 2;
-  for (let i = 0; i < n; i++) {
-    const x1 = points[2 * i];
-    const y1 = points[2 * i + 1];
-    const x2 = points[2 * ((i + 1) % n)];
-    const y2 = points[2 * ((i + 1) % n) + 1];
-    area += x1 * y2 - x2 * y1;
-  }
-  return Math.abs(area / 2);
+// Remove mock plan data and add real plan fetching
+type Plan = {
+  id: string;
+  title: string;
+  description: string | null;
+  fileUrl: string;
+  fileType: string;
+  projectId: string;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export default function ProjectTakeoffModern({ params }: { params: { id: string } }) {
-  const [selectedPlanId, setSelectedPlanId] = useState<string>(mockPlans[0].id);
-  const [drawingMode, setDrawingMode] = useState<DrawingMode>("select");
-  const [measurements, setMeasurements] = useState<Measurement[]>([]);
-  const [selectedMeasurementId, setSelectedMeasurementId] = useState<string | null>(null);
-  const [scale, setScale] = useState({ pixels: 100, units: 1, unitType: "ft" });
+  const { data: session } = useSession()
+  const [drawingMode, setDrawingMode] = useState<DrawingMode>("select")
+  const [measurements, setMeasurements] = useState<Measurement[]>([])
+  const [selectedMeasurementId, setSelectedMeasurementId] = useState<string | null>(null)
+  const [scale, setScale] = useState({ pixels: 100, units: 1, unitType: "ft" })
   const [materials, setMaterials] = useState([
     { id: "1", name: "Concrete", unit: "sq ft", price: 8.50 },
     { id: "2", name: "Lumber", unit: "linear ft", price: 2.25 },
     { id: "3", name: "Drywall", unit: "sq ft", price: 1.75 },
     { id: "4", name: "Paint", unit: "sq ft", price: 0.85 },
-  ]);
-  const [measurementMaterials, setMeasurementMaterials] = useState<Record<string, string>>({});
-  const selectedPlan = mockPlans.find((p) => p.id === selectedPlanId);
+  ])
+  const [measurementMaterials, setMeasurementMaterials] = useState<Record<string, string>>({})
+  
+  // Real plan data
+  const [plans, setPlans] = useState<Plan[]>([])
+  const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  const selectedPlan = plans.find((p) => p.id === selectedPlanId)
 
   // Fetch measurements for the selected plan
-  useEffect(() => {
-    const fetchMeasurements = async () => {
-      try {
-        const res = await fetch(`/api/projects/${params.id}/takeoff?planId=${selectedPlanId}`);
-        if (res.ok) {
-          const data = await res.json();
-          setMeasurements(
-            data.map((m: any) => ({
-              id: m.id,
-              type: m.type,
-              points: typeof m.points === "string" ? JSON.parse(m.points) : m.points,
-            }))
-          );
-        } else {
-          setMeasurements([]);
-        }
-      } catch {
+  const fetchMeasurements = useCallback(async () => {
+    if (!selectedPlanId) return;
+    try {
+      const res = await fetch(`/api/projects/${params.id}/takeoff?planId=${selectedPlanId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setMeasurements(
+          data.map((m: any) => ({
+            id: m.id,
+            type: m.type,
+            points: typeof m.points === "string" ? JSON.parse(m.points) : m.points,
+          }))
+        );
+      } else {
         setMeasurements([]);
       }
-    };
-    if (selectedPlanId) fetchMeasurements();
+    } catch {
+      setMeasurements([]);
+    }
   }, [params.id, selectedPlanId]);
+
+  // Fetch plans for this project
+  useEffect(() => {
+    const fetchPlans = async () => {
+      try {
+        const response = await fetch(`/api/projects/${params.id}/plans`)
+        if (response.ok) {
+          const plansData = await response.json()
+          setPlans(plansData)
+          if (plansData.length > 0) {
+            setSelectedPlanId(plansData[0].id)
+          }
+        }
+      } catch (error) {
+        console.error("Failed to fetch plans:", error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchPlans()
+  }, [params.id])
+
+  // Fetch measurements when plan changes
+  useEffect(() => {
+    if (selectedPlanId) {
+      fetchMeasurements()
+    }
+  }, [selectedPlanId, fetchMeasurements])
 
   // Add a new measurement (from canvas)
   const handleAddMeasurement = async (type: MeasurementType, points: number[]) => {
@@ -229,7 +237,7 @@ export default function ProjectTakeoffModern({ params }: { params: { id: string 
     // Add total cost
     const totalCost = calculateTotalCost();
     doc.setFontSize(14);
-    doc.text(`Total Estimated Cost: $${totalCost.toFixed(2)}`, 20, doc.lastAutoTable.finalY + 20);
+    doc.text(`Total Estimated Cost: $${totalCost.toFixed(2)}`, 20, 200);
     
     // Save the PDF
     doc.save(`takeoff-report-${selectedPlanId}.pdf`);
@@ -273,6 +281,30 @@ export default function ProjectTakeoffModern({ params }: { params: { id: string 
     }, 0);
   };
 
+  // Utility functions for measurement calculations
+  function getLineLength(points: number[]): number {
+    let length = 0;
+    for (let i = 2; i < points.length; i += 2) {
+      const dx = points[i] - points[i - 2];
+      const dy = points[i + 1] - points[i - 1];
+      length += Math.sqrt(dx * dx + dy * dy);
+    }
+    return length;
+  }
+
+  function getPolygonArea(points: number[]): number {
+    let area = 0;
+    const n = points.length / 2;
+    for (let i = 0; i < n; i++) {
+      const x1 = points[2 * i];
+      const y1 = points[2 * i + 1];
+      const x2 = points[2 * ((i + 1) % n)];
+      const y2 = points[2 * ((i + 1) % n) + 1];
+      area += x1 * y2 - x2 * y1;
+    }
+    return Math.abs(area / 2);
+  }
+
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col">
       {/* Header */}
@@ -315,15 +347,21 @@ export default function ProjectTakeoffModern({ params }: { params: { id: string 
 
       {/* Plan Thumbnails */}
       <div className="flex gap-2 px-8 py-2 bg-gray-50 border-b">
-        {mockPlans.map((plan) => (
-          <button
-            key={plan.id}
-            className={`w-16 h-12 rounded shadow flex items-center justify-center text-sm font-medium ${selectedPlanId === plan.id ? "bg-blue-200 border-2 border-blue-500" : "bg-gray-200"}`}
-            onClick={() => setSelectedPlanId(plan.id)}
-          >
-            {plan.title}
-          </button>
-        ))}
+        {loading ? (
+          <div className="text-center py-4">Loading plans...</div>
+        ) : plans.length === 0 ? (
+          <div className="text-center py-4">No plans found for this project.</div>
+        ) : (
+          plans.map((plan) => (
+            <button
+              key={plan.id}
+              className={`w-16 h-12 rounded shadow flex items-center justify-center text-sm font-medium ${selectedPlanId === plan.id ? "bg-blue-200 border-2 border-blue-500" : "bg-gray-200"}`}
+              onClick={() => setSelectedPlanId(plan.id)}
+            >
+              {plan.title}
+            </button>
+          ))
+        )}
         <button className="w-16 h-12 bg-blue-100 rounded shadow flex items-center justify-center text-blue-600 font-bold text-2xl">+</button>
       </div>
 
