@@ -30,6 +30,13 @@ export default function NewPlanPage({ params }: { params: { id: string } }) {
       return
     }
 
+    // Get form values safely
+    const form = e.currentTarget
+    const titleInput = form.elements.namedItem("title") as HTMLInputElement | null
+    const descriptionInput = form.elements.namedItem("description") as HTMLTextAreaElement | null
+    const title = titleInput?.value || ""
+    const description = descriptionInput?.value || ""
+
     try {
       // First, upload the file
       const formData = new FormData()
@@ -49,8 +56,8 @@ export default function NewPlanPage({ params }: { params: { id: string } }) {
 
       // Then, create the plan with the file URL
       const planData = {
-        title: (e.currentTarget.elements.namedItem("title") as HTMLInputElement).value,
-        description: (e.currentTarget.elements.namedItem("description") as HTMLTextAreaElement).value,
+        title,
+        description,
         fileUrl,
         fileType,
       }
