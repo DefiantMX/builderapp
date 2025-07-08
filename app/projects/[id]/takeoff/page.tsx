@@ -56,7 +56,7 @@ export default function ProjectTakeoffModern({ params }: { params: { id: string 
   const selectedPlan = plans.find((p) => p.id === selectedPlanId)
 
   // PDF state
-  const [pdfPageCount, setPdfPageCount] = useState(1);
+  const [pdfPageCount, setPdfPageCount] = useState<number | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [pdfWidth, setPdfWidth] = useState(900);
   const [pdfHeight, setPdfHeight] = useState(600);
@@ -122,8 +122,10 @@ export default function ProjectTakeoffModern({ params }: { params: { id: string 
   const handlePageChange = (offset: number) => {
     setCurrentPage((prev) => {
       let next = prev + offset;
-      if (next < 1) next = 1;
-      if (next > pdfPageCount) next = pdfPageCount;
+      if (pdfPageCount) {
+        if (next < 1) next = 1;
+        if (next > pdfPageCount) next = pdfPageCount;
+      }
       return next;
     });
   };
@@ -397,41 +399,41 @@ export default function ProjectTakeoffModern({ params }: { params: { id: string 
       <div className="flex flex-1 overflow-hidden">
         {/* Canvas Area */}
         <main className="flex-1 flex items-center justify-center p-8">
-          <div className="relative w-full max-w-3xl h-[600px] bg-white rounded-lg shadow-lg flex items-center justify-center">
+          <div className="relative w-full max-w-3xl bg-white rounded-lg shadow-lg flex items-center justify-center" style={{ minHeight: 600 }}>
             {/* PDF Plan Background */}
             {selectedPlan && selectedPlan.fileType === 'application/pdf' && (
-              <Document
-                file={selectedPlan.fileUrl}
-                onLoadSuccess={({ numPages }) => setPdfPageCount(numPages)}
-                loading={<div>Loading PDF...</div>}
-                className="absolute top-0 left-0 w-full h-full z-0"
-              >
-                <Page
-                  pageNumber={currentPage}
-                  width={pdfWidth}
-                  onRenderSuccess={({ width, height }) => {
-                    setPdfWidth(width || 900);
-                    setPdfHeight(height || 600);
-                  }}
-                  renderAnnotationLayer={false}
-                  renderTextLayer={false}
-                />
-              </Document>
-            )}
-            {/* Drawing Canvas Overlay */}
-            {selectedPlan && selectedPlan.fileType === 'application/pdf' && (
-              <div style={{ position: 'absolute', top: 0, left: 0, width: pdfWidth, height: pdfHeight, pointerEvents: 'auto' }}>
-                <TakeoffCanvas
-                  width={pdfWidth}
-                  height={pdfHeight}
-                  backgroundImageUrl={undefined} // No image, PDF is rendered below
-                  mode={drawingMode}
-                  measurements={measurements}
-                  selectedMeasurementId={selectedMeasurementId}
-                  onAddMeasurement={handleAddMeasurement}
-                  onSelectMeasurement={handleSelectMeasurement}
-                />
-              </div>
+              <>
+                <Document
+                  file={selectedPlan.fileUrl}
+                  onLoadSuccess={({ numPages }) => setPdfPageCount(numPages)}
+                  loading={<div>Loading PDF...</div>}
+                  error={<div>Failed to load PDF</div>}
+                  className="absolute top-0 left-0 w-full h-full z-0"
+                >
+                  <Page
+                    pageNumber={currentPage}
+                    width={pdfWidth}
+                    onRenderSuccess={({ width }) => {
+                      setPdfWidth(width || 900);
+                    }}
+                    renderAnnotationLayer={false}
+                    renderTextLayer={false}
+                  />
+                </Document>
+                {/* Drawing Canvas Overlay */}
+                <div style={{ position: 'absolute', top: 0, left: 0, width: pdfWidth, height: '100%', pointerEvents: 'auto' }}>
+                  <TakeoffCanvas
+                    width={pdfWidth}
+                    height={600}
+                    backgroundImageUrl={undefined}
+                    mode={drawingMode}
+                    measurements={measurements}
+                    selectedMeasurementId={selectedMeasurementId}
+                    onAddMeasurement={handleAddMeasurement}
+                    onSelectMeasurement={handleSelectMeasurement}
+                  />
+                </div>
+              </>
             )}
             {/* If not PDF, fallback to image rendering */}
             {selectedPlan && selectedPlan.fileType !== 'application/pdf' && (
@@ -449,7 +451,7 @@ export default function ProjectTakeoffModern({ params }: { params: { id: string 
           </div>
         </main>
         {/* PDF Page Navigation */}
-        {selectedPlan && selectedPlan.fileType === 'application/pdf' && pdfPageCount > 1 && (
+        {selectedPlan && selectedPlan.fileType === 'application/pdf' && pdfPageCount && pdfPageCount > 1 && (
           <div className="flex justify-center items-center gap-4 mt-2">
             <button onClick={() => handlePageChange(-1)} disabled={currentPage === 1} className="px-2 py-1 bg-gray-200 rounded disabled:opacity-50">Prev</button>
             <span>Page {currentPage} of {pdfPageCount}</span>
