@@ -1,415 +1,571 @@
 "use client"
 
-import type React from "react"
+import React, { useState, useEffect } from "react";
+import { Upload, Ruler, Square, Undo2, Redo2, Download, MousePointerClick, Trash2 } from "lucide-react";
+import TakeoffCanvas, { DrawingMode, Measurement, MeasurementType } from "@/app/components/TakeoffCanvas";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
-import { useState, useEffect, useRef } from "react"
-import Link from "next/link"
-import { Upload, FileText, Calculator } from "lucide-react"
-import TakeoffViewer from "../../../components/TakeoffViewer" // Import TakeoffViewer component
-
-type Plan = {
-  id: string
-  title: string
-  description: string | null
-  fileUrl: string
-  fileType: string
-  createdAt: string
-  updatedAt: string
+// Extend jsPDF type to include lastAutoTable
+declare module "jspdf" {
+  interface jsPDF {
+    lastAutoTable?: {
+      finalY: number;
+    };
+  }
 }
 
-type Measurement = {
-  id: string
-  planId: string
-  type: "length" | "area"
-  label: string
-  value: number
-  unit: string
-  points: { x: number; y: number }[]
-  materialType?: string
-  pricePerUnit?: number
+// Mock plan data for demonstration
+const mockPlans = [
+  {
+    id: "plan1",
+    title: "Plan 1",
+    fileUrl: "https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=900&q=80",
+  },
+  {
+    id: "plan2",
+    title: "Plan 2",
+    fileUrl: "https://images.unsplash.com/photo-1465101046530-73398c7f28ca?auto=format&fit=crop&w=900&q=80",
+  },
+];
+
+// Utility functions for measurement calculations
+function getLineLength(points: number[]): number {
+  let length = 0;
+  for (let i = 2; i < points.length; i += 2) {
+    const dx = points[i] - points[i - 2];
+    const dy = points[i + 1] - points[i - 1];
+    length += Math.sqrt(dx * dx + dy * dy);
+  }
+  return length;
 }
 
-export default function ProjectTakeoff({ params }: { params: { id: string } }) {
-  const [plans, setPlans] = useState<Plan[]>([])
-  const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null)
-  const [measurements, setMeasurements] = useState<Measurement[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState("")
-  const [uploading, setUploading] = useState(false)
-  const [showUploadForm, setShowUploadForm] = useState(false)
-  const [project, setProject] = useState<{ name: string } | null>(null)
-  const [newPlan, setNewPlan] = useState({
-    title: "",
-    description: "",
-    file: null as File | null,
-  })
-  const fileInputRef = useRef<HTMLInputElement>(null)
+function getPolygonArea(points: number[]): number {
+  let area = 0;
+  const n = points.length / 2;
+  for (let i = 0; i < n; i++) {
+    const x1 = points[2 * i];
+    const y1 = points[2 * i + 1];
+    const x2 = points[2 * ((i + 1) % n)];
+    const y2 = points[2 * ((i + 1) % n) + 1];
+    area += x1 * y2 - x2 * y1;
+  }
+  return Math.abs(area / 2);
+}
 
+export default function ProjectTakeoffModern({ params }: { params: { id: string } }) {
+  const [selectedPlanId, setSelectedPlanId] = useState<string>(mockPlans[0].id);
+  const [drawingMode, setDrawingMode] = useState<DrawingMode>("select");
+  const [measurements, setMeasurements] = useState<Measurement[]>([]);
+  const [selectedMeasurementId, setSelectedMeasurementId] = useState<string | null>(null);
+  const [scale, setScale] = useState({ pixels: 100, units: 1, unitType: "ft" });
+  const [materials, setMaterials] = useState([
+    { id: "1", name: "Concrete", unit: "sq ft", price: 8.50 },
+    { id: "2", name: "Lumber", unit: "linear ft", price: 2.25 },
+    { id: "3", name: "Drywall", unit: "sq ft", price: 1.75 },
+    { id: "4", name: "Paint", unit: "sq ft", price: 0.85 },
+  ]);
+  const [measurementMaterials, setMeasurementMaterials] = useState<Record<string, string>>({});
+  const selectedPlan = mockPlans.find((p) => p.id === selectedPlanId);
+
+  // Fetch measurements for the selected plan
   useEffect(() => {
-    fetchProject()
-    fetchPlans()
-    fetchMeasurements()
-  }, [params.id, selectedPlan?.id])
-
-  const fetchProject = async () => {
-    try {
-      const response = await fetch(`/api/projects/${params.id}`)
-      if (response.ok) {
-        const data = await response.json()
-        setProject(data)
-      } else {
-        setError("Failed to fetch project")
-      }
-    } catch (err) {
-      setError("An error occurred while fetching project")
-    }
-  }
-
-  const fetchPlans = async () => {
-    try {
-      const response = await fetch(`/api/projects/${params.id}/plans`)
-      if (response.ok) {
-        const data = await response.json()
-        setPlans(data)
-      } else {
-        setError("Failed to fetch plans")
-      }
-    } catch (err) {
-      setError("An error occurred while fetching plans")
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const fetchMeasurements = async () => {
-    try {
-      const response = await fetch(`/api/projects/${params.id}/takeoff`)
-      if (response.ok) {
-        const data = await response.json()
-        console.log('Fetched measurements:', data) // Debug log
-        // Parse the points JSON string for each measurement
-        const parsedData = data.map((measurement: any) => {
-          try {
-            return {
-              ...measurement,
-              points: typeof measurement.points === 'string' 
-                ? JSON.parse(measurement.points)
-                : measurement.points
-            }
-          } catch (err) {
-            console.error('Error parsing measurement:', measurement, err)
-            return measurement
-          }
-        })
-        setMeasurements(parsedData)
-      } else {
-        const errorText = await response.text()
-        console.error("Failed to fetch measurements:", errorText)
-      }
-    } catch (err) {
-      console.error("Error fetching measurements:", err)
-    }
-  }
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files || !e.target.files[0]) return
-
-    const file = e.target.files[0]
-    setNewPlan(prev => ({
-      ...prev,
-      file,
-      title: prev.title || file.name.replace(/\.[^/.]+$/, ""),
-    }))
-  }
-
-  const handleUpload = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!newPlan.file) return
-
-    setUploading(true)
-    setError("")
-
-    const formData = new FormData()
-    formData.append("file", newPlan.file)
-    formData.append("title", newPlan.title)
-    formData.append("description", newPlan.description)
-
-    try {
-      const response = await fetch(`/api/projects/${params.id}/plans`, {
-        method: "POST",
-        body: formData,
-      })
-
-      if (response.ok) {
-        const newPlanData = await response.json()
-        setPlans([...plans, newPlanData])
-        setShowUploadForm(false)
-        setNewPlan({
-          title: "",
-          description: "",
-          file: null,
-        })
-        if (fileInputRef.current) {
-          fileInputRef.current.value = ""
+    const fetchMeasurements = async () => {
+      try {
+        const res = await fetch(`/api/projects/${params.id}/takeoff?planId=${selectedPlanId}`);
+        if (res.ok) {
+          const data = await res.json();
+          setMeasurements(
+            data.map((m: any) => ({
+              id: m.id,
+              type: m.type,
+              points: typeof m.points === "string" ? JSON.parse(m.points) : m.points,
+            }))
+          );
+        } else {
+          setMeasurements([]);
         }
-      } else {
-        const errorData = await response.json()
-        setError(errorData.message || "Failed to upload plan")
+      } catch {
+        setMeasurements([]);
       }
-    } catch (err) {
-      setError("An error occurred while uploading the plan")
-    } finally {
-      setUploading(false)
-    }
-  }
+    };
+    if (selectedPlanId) fetchMeasurements();
+  }, [params.id, selectedPlanId]);
 
-  const handleMeasurementSave = async (measurement: Omit<Measurement, "id">) => {
+  // Add a new measurement (from canvas)
+  const handleAddMeasurement = async (type: MeasurementType, points: number[]) => {
+    // Optimistically add to UI
+    const tempId = `${type}-temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    setMeasurements((prev) => [
+      ...prev,
+      { id: tempId, type, points },
+    ]);
+    // Save to backend
     try {
-      const response = await fetch(`/api/projects/${params.id}/takeoff`, {
+      const res = await fetch(`/api/projects/${params.id}/takeoff`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(measurement),
-      })
-
-      if (response.ok) {
-        const savedMeasurement = await response.json()
-        setMeasurements(prevMeasurements => [...prevMeasurements, savedMeasurement])
-        fetchMeasurements()
-      } else {
-        console.error("Failed to save measurement:", await response.text())
-      }
-    } catch (err) {
-      console.error("Error saving measurement:", err)
-    }
-  }
-
-  const handleMeasurementDelete = async (measurementId: string) => {
-    try {
-      console.log('Deleting measurement:', measurementId); // Debug log
-      const response = await fetch(`/api/projects/${params.id}/takeoff?measurementId=${measurementId}`, {
-        method: 'DELETE',
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          planId: selectedPlanId,
+          type,
+          points: JSON.stringify(points),
+        }),
       });
-
-      if (response.ok) {
-        console.log('Successfully deleted measurement'); // Debug log
-        setMeasurements(prevMeasurements => 
-          prevMeasurements.filter(m => m.id !== measurementId)
+      if (res.ok) {
+        const saved = await res.json();
+        setMeasurements((prev) =>
+          prev.map((m) => (m.id === tempId ? { ...m, id: saved.id } : m))
         );
-        // Refresh measurements to ensure sync with server
-        await fetchMeasurements();
-      } else {
-        const errorText = await response.text();
-        console.error("Failed to delete measurement:", errorText);
       }
-    } catch (err) {
-      console.error("Error deleting measurement:", err);
+    } catch {
+      // Optionally show error
     }
   };
 
-  const handleMeasurementUpdate = async (id: string, updates: Partial<Measurement>) => {
+  // Delete a measurement
+  const handleDeleteMeasurement = async (id: string) => {
+    setMeasurements((prev) => prev.filter((m) => m.id !== id));
+    if (selectedMeasurementId === id) setSelectedMeasurementId(null);
+    // Delete from backend
     try {
-      console.log('Updating measurement:', id, updates); // Debug log
-      const response = await fetch(`/api/projects/${params.id}/takeoff/${id}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(updates),
+      await fetch(`/api/projects/${params.id}/takeoff?measurementId=${id}`, {
+        method: "DELETE",
       });
-
-      if (response.ok) {
-        console.log('Successfully updated measurement'); // Debug log
-        // Update the measurement in local state immediately
-        const updatedMeasurement = await response.json();
-        setMeasurements(prevMeasurements => 
-          prevMeasurements.map(m => 
-            m.id === id ? { ...m, ...updatedMeasurement } : m
-          )
-        );
-      } else {
-        const errorText = await response.text();
-        console.error("Failed to update measurement:", errorText);
-      }
-    } catch (err) {
-      console.error("Error updating measurement:", err);
-    }
+    } catch {}
   };
 
-  if (loading) {
-    return <div className="text-center mt-8">Loading...</div>
-  }
+  // Select a measurement
+  const handleSelectMeasurement = (id: string) => {
+    setSelectedMeasurementId(id);
+  };
+
+  // Export measurements as CSV
+  const handleExportCSV = () => {
+    if (measurements.length === 0) return;
+    const rows = [
+      ["Type", "Value (px or px²)", "Points"],
+      ...measurements.map((m) => {
+        let value = "";
+        if (m.type === "line") {
+          value = getLineLength(m.points).toFixed(2);
+        } else if (m.type === "area") {
+          value = getPolygonArea(m.points).toFixed(2);
+        }
+        return [m.type, value, JSON.stringify(m.points)];
+      }),
+    ];
+    const csv = rows.map((r) => r.join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `takeoff-${selectedPlanId}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  // Export measurements as PDF
+  const handleExportPDF = () => {
+    if (measurements.length === 0) return;
+
+    const doc = new jsPDF();
+    
+    // Header
+    doc.setFontSize(20);
+    doc.text("Takeoff Report", 20, 20);
+    doc.setFontSize(12);
+    doc.text(`Project: ${params.id}`, 20, 30);
+    doc.text(`Plan: ${selectedPlanId}`, 20, 40);
+    doc.text(`Date: ${new Date().toLocaleDateString()}`, 20, 50);
+    
+    // Summary table
+    const lineMeasurements = measurements.filter(m => m.type === "line");
+    const areaMeasurements = measurements.filter(m => m.type === "area");
+    
+    const totalLineLength = lineMeasurements.reduce((sum, m) => sum + getLineLength(m.points), 0);
+    const totalArea = areaMeasurements.reduce((sum, m) => sum + getPolygonArea(m.points), 0);
+    
+    autoTable(doc, {
+      startY: 70,
+      head: [["Type", "Count", "Total Value"]],
+      body: [
+        ["Lines", lineMeasurements.length.toString(), `${totalLineLength.toFixed(2)} px`],
+        ["Areas", areaMeasurements.length.toString(), `${totalArea.toFixed(2)} px²`],
+        ["Total", measurements.length.toString(), ""]
+      ],
+      theme: "grid"
+    });
+    
+    // Detailed measurements table
+    const tableData = measurements.map((m, index) => {
+      let value = "";
+      if (m.type === "line") {
+        value = `${getLineLength(m.points).toFixed(2)} px`;
+      } else if (m.type === "area") {
+        value = `${getPolygonArea(m.points).toFixed(2)} px²`;
+      }
+      
+      const materialId = measurementMaterials[m.id];
+      const material = materials.find(mat => mat.id === materialId);
+      const materialName = material ? material.name : "None";
+      
+      const pixelValue = m.type === "line" ? getLineLength(m.points) : getPolygonArea(m.points);
+      const realValue = (pixelValue * scale.units) / scale.pixels;
+      const cost = material ? realValue * material.price : 0;
+      
+      return [`${index + 1}`, m.type, value, materialName, `$${cost.toFixed(2)}`];
+    });
+    
+    autoTable(doc, {
+      startY: 120,
+      head: [["#", "Type", "Value", "Material", "Cost"]],
+      body: tableData,
+      theme: "grid",
+      headStyles: { fillColor: [66, 139, 202] }
+    });
+    
+    // Add total cost
+    const totalCost = calculateTotalCost();
+    doc.setFontSize(14);
+    doc.text(`Total Estimated Cost: $${totalCost.toFixed(2)}`, 20, doc.lastAutoTable.finalY + 20);
+    
+    // Save the PDF
+    doc.save(`takeoff-report-${selectedPlanId}.pdf`);
+  };
+
+  // Export annotated plan image
+  const handleExportImage = () => {
+    const canvas = document.querySelector('canvas') as HTMLCanvasElement;
+    if (!canvas) return;
+    
+    // Create a temporary link to download the canvas as image
+    const link = document.createElement('a');
+    link.download = `takeoff-annotated-${selectedPlanId}.png`;
+    link.href = canvas.toDataURL('image/png');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Convert pixel measurements to real-world units
+  const convertToRealUnits = (pixelValue: number): string => {
+    const realValue = (pixelValue * scale.units) / scale.pixels;
+    return `${realValue.toFixed(2)} ${scale.unitType}`;
+  };
+
+  // Calculate total cost
+  const calculateTotalCost = (): number => {
+    return measurements.reduce((total, measurement) => {
+      const materialId = measurementMaterials[measurement.id];
+      if (!materialId) return total;
+      
+      const material = materials.find(m => m.id === materialId);
+      if (!material) return total;
+      
+      const pixelValue = measurement.type === "line" 
+        ? getLineLength(measurement.points)
+        : getPolygonArea(measurement.points);
+      
+      const realValue = (pixelValue * scale.units) / scale.pixels;
+      return total + (realValue * material.price);
+    }, 0);
+  };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)]">
-      <div className="flex items-center h-16 px-4 border-b">
-        <h1 className="text-2xl font-bold">Takeoff for {project?.name || 'Loading...'}</h1>
+    <div className="min-h-screen bg-gray-100 flex flex-col">
+      {/* Header */}
+      <header className="flex items-center justify-between px-8 py-4 bg-slate-900 text-white shadow">
+        <div className="font-bold text-xl">Project Name / {selectedPlan?.title}</div>
+        <div className="flex items-center gap-4">
+          <button className="bg-slate-800 px-3 py-1 rounded hover:bg-slate-700">Back to Projects</button>
+          <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center font-bold">U</div>
+        </div>
+      </header>
+
+      {/* Toolbar */}
+      <nav className="flex items-center gap-4 px-8 py-3 bg-white shadow-sm border-b">
+        <button
+          className={`p-2 rounded ${drawingMode === "select" ? "bg-blue-200" : "hover:bg-blue-100"}`}
+          title="Select"
+          onClick={() => setDrawingMode("select")}
+        >
+          <MousePointerClick className="w-5 h-5" />
+        </button>
+        <button
+          className={`p-2 rounded ${drawingMode === "line" ? "bg-blue-200" : "hover:bg-blue-100"}`}
+          title="Draw Line"
+          onClick={() => setDrawingMode("line")}
+        >
+          <Ruler className="w-5 h-5" />
+        </button>
+        <button
+          className={`p-2 rounded ${drawingMode === "area" ? "bg-blue-200" : "hover:bg-blue-100"}`}
+          title="Draw Area"
+          onClick={() => setDrawingMode("area")}
+        >
+          <Square className="w-5 h-5" />
+        </button>
+        <button className="p-2 rounded hover:bg-blue-100" title="Upload Plan"><Upload className="w-5 h-5" /></button>
+        <button className="p-2 rounded hover:bg-blue-100" title="Export"><Download className="w-5 h-5" /></button>
+        <button className="p-2 rounded hover:bg-blue-100" title="Undo"><Undo2 className="w-5 h-5" /></button>
+        <button className="p-2 rounded hover:bg-blue-100" title="Redo"><Redo2 className="w-5 h-5" /></button>
+      </nav>
+
+      {/* Plan Thumbnails */}
+      <div className="flex gap-2 px-8 py-2 bg-gray-50 border-b">
+        {mockPlans.map((plan) => (
+          <button
+            key={plan.id}
+            className={`w-16 h-12 rounded shadow flex items-center justify-center text-sm font-medium ${selectedPlanId === plan.id ? "bg-blue-200 border-2 border-blue-500" : "bg-gray-200"}`}
+            onClick={() => setSelectedPlanId(plan.id)}
+          >
+            {plan.title}
+          </button>
+        ))}
+        <button className="w-16 h-12 bg-blue-100 rounded shadow flex items-center justify-center text-blue-600 font-bold text-2xl">+</button>
       </div>
 
-      <div className="flex flex-1 min-h-0">
-        <div className="w-80 bg-white border-r p-4 overflow-y-auto">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-semibold flex items-center">
-              <FileText className="mr-2" />
-              Project Plans
-            </h2>
-            <button
-              onClick={() => setShowUploadForm(true)}
-              className={`flex items-center px-3 py-2 bg-blue-500 text-white rounded-lg cursor-pointer hover:bg-blue-600 transition-colors ${
-                uploading ? "opacity-50 cursor-not-allowed" : ""
-              }`}
-              disabled={uploading}
-            >
-              <Upload className="w-4 h-4 mr-2" />
-              {uploading ? "Uploading..." : "Upload Plan"}
-            </button>
-          </div>
-
-          {error && <p className="text-red-500 text-sm mb-4">{error}</p>}
-
-          {showUploadForm && (
-            <div className="mb-4 p-4 border rounded-lg bg-gray-50">
-              <form onSubmit={handleUpload} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Title</label>
-                  <input
-                    type="text"
-                    value={newPlan.title}
-                    onChange={(e) => setNewPlan({ ...newPlan, title: e.target.value })}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Description (Optional)</label>
-                  <textarea
-                    value={newPlan.description}
-                    onChange={(e) => setNewPlan({ ...newPlan, description: e.target.value })}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                    rows={3}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">File</label>
-                  <input
-                    type="file"
-                    onChange={handleFileChange}
-                    accept=".pdf"
-                    className="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-                    ref={fileInputRef}
-                    required
-                  />
-                </div>
-
-                <div className="flex justify-end space-x-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowUploadForm(false)}
-                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={uploading}
-                    className={`px-4 py-2 text-sm font-medium text-white bg-blue-500 rounded-md shadow-sm hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 ${
-                      uploading ? "opacity-50 cursor-not-allowed" : ""
-                    }`}
-                  >
-                    {uploading ? "Uploading..." : "Upload"}
-                  </button>
-                </div>
-              </form>
-            </div>
-          )}
-
-          <div className="space-y-2">
-            <h3 className="font-medium text-gray-900 mb-2">HUB PLANS</h3>
-            {plans.map((plan) => (
-              <button
-                key={plan.id}
-                onClick={() => setSelectedPlan(plan)}
-                className={`w-full text-left px-4 py-3 rounded-lg transition-colors ${
-                  selectedPlan?.id === plan.id
-                    ? "bg-blue-50 border-blue-500"
-                    : "bg-white hover:bg-gray-50 border-gray-200"
-                } border`}
-              >
-                <div className="font-medium text-gray-900">{plan.title}</div>
-                {plan.description && (
-                  <div className="text-sm text-gray-500 mt-1">{plan.description}</div>
-                )}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="flex-1 min-w-0">
-          {selectedPlan ? (
-            <TakeoffViewer
-              plan={selectedPlan}
+      {/* Main Content Area */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Canvas Area */}
+        <main className="flex-1 flex items-center justify-center p-8">
+          <div className="relative w-full max-w-3xl h-[600px] bg-white rounded-lg shadow-lg flex items-center justify-center">
+            {/* Drawing Canvas */}
+            <TakeoffCanvas
+              width={900}
+              height={600}
+              backgroundImageUrl={selectedPlan?.fileUrl}
+              mode={drawingMode}
               measurements={measurements}
-              onMeasurementSave={handleMeasurementSave}
-              onMeasurementUpdate={handleMeasurementUpdate}
-              onMeasurementDelete={handleMeasurementDelete}
+              selectedMeasurementId={selectedMeasurementId}
+              onAddMeasurement={handleAddMeasurement}
+              onSelectMeasurement={handleSelectMeasurement}
             />
-          ) : (
-            <div className="flex items-center justify-center h-full text-gray-500">
-              Select a plan to begin takeoff
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="mt-8 bg-white p-4 rounded-lg shadow">
-        <h2 className="text-xl font-semibold mb-4 flex items-center">
-          <Calculator className="mr-2" />
-          Measurements Summary
-        </h2>
-        {measurements.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-base">
-              <thead>
-                <tr className="border-b">
-                  <th className="text-left p-3 text-lg font-semibold">Plan</th>
-                  <th className="text-left p-3 text-lg font-semibold">Type</th>
-                  <th className="text-left p-3 text-lg font-semibold">Label</th>
-                  <th className="text-right p-3 text-lg font-semibold">Value</th>
-                  <th className="text-left p-3 text-lg font-semibold">Unit</th>
-                  <th className="text-left p-3 text-lg font-semibold">Material</th>
-                  <th className="text-right p-3 text-lg font-semibold">Price/Unit</th>
-                </tr>
-              </thead>
-              <tbody>
-                {measurements.map((measurement) => (
-                  <tr key={measurement.id} className="border-b hover:bg-gray-50">
-                    <td className="p-3 text-base">{plans.find((p) => p.id === measurement.planId)?.title}</td>
-                    <td className="p-3 text-base capitalize">{measurement.type}</td>
-                    <td className="p-3 text-base">{measurement.label}</td>
-                    <td className="p-3 text-base text-right font-medium">{measurement.value.toFixed(2)}</td>
-                    <td className="p-3 text-base">{measurement.unit}</td>
-                    <td className="p-3 text-base">{measurement.materialType || '-'}</td>
-                    <td className="p-3 text-base text-right">{measurement.pricePerUnit ? `$${measurement.pricePerUnit.toFixed(2)}` : '-'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
           </div>
-        ) : (
-          <p className="text-center text-gray-500 text-base">No measurements recorded yet</p>
-        )}
+        </main>
+        {/* Sidebar */}
+        <aside className="w-96 bg-white border-l shadow-lg p-6 flex flex-col gap-6">
+          <div className="mb-6">
+            <h2 className="font-semibold text-lg mb-2">Summary</h2>
+            <div className="bg-gray-50 p-3 rounded">
+              <div className="flex justify-between mb-2">
+                <span>Lines:</span>
+                <span className="font-medium">{measurements.filter(m => m.type === "line").length}</span>
+              </div>
+              <div className="flex justify-between mb-2">
+                <span>Areas:</span>
+                <span className="font-medium">{measurements.filter(m => m.type === "area").length}</span>
+              </div>
+              <div className="flex justify-between mb-2">
+                <span>Total Length:</span>
+                <span className="font-medium">
+                  {(() => {
+                    const pixelValue = measurements
+                      .filter(m => m.type === "line")
+                      .reduce((sum, m) => sum + getLineLength(m.points), 0);
+                    return `${pixelValue.toFixed(2)} px (${convertToRealUnits(pixelValue)})`;
+                  })()}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span>Total Area:</span>
+                <span className="font-medium">
+                  {(() => {
+                    const pixelValue = measurements
+                      .filter(m => m.type === "area")
+                      .reduce((sum, m) => sum + getPolygonArea(m.points), 0);
+                    return `${pixelValue.toFixed(2)} px² (${convertToRealUnits(pixelValue)}²)`;
+                  })()}
+                </span>
+              </div>
+            </div>
+          </div>
+          <div>
+            <h2 className="font-semibold text-lg mb-2">Measurements</h2>
+            <div className="space-y-2">
+              {measurements.length === 0 && <div className="text-gray-500">No measurements yet</div>}
+              {measurements.map((m) => (
+                <div
+                  key={m.id}
+                  className={`flex items-center justify-between px-3 py-2 rounded cursor-pointer ${selectedMeasurementId === m.id ? "bg-blue-100 border border-blue-400" : "hover:bg-gray-100"}`}
+                  onClick={() => handleSelectMeasurement(m.id)}
+                >
+                  <span className="font-medium text-gray-800">{m.type === "line" ? "Line" : "Area"}</span>
+                  <button
+                    className="ml-2 p-1 rounded hover:bg-red-100"
+                    onClick={e => { e.stopPropagation(); handleDeleteMeasurement(m.id); }}
+                    title="Delete"
+                  >
+                    <Trash2 className="w-4 h-4 text-red-500" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div>
+            <h2 className="font-semibold text-lg mb-2">Info</h2>
+            {selectedMeasurementId ? (
+              (() => {
+                const measurement = measurements.find(m => m.id === selectedMeasurementId);
+                if (!measurement) return <div className="text-gray-500">Measurement not found</div>;
+                
+                const value = measurement.type === "line" 
+                  ? `${getLineLength(measurement.points).toFixed(2)} px`
+                  : `${getPolygonArea(measurement.points).toFixed(2)} px²`;
+                
+                return (
+                  <div className="bg-blue-50 p-3 rounded border border-blue-200">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-medium text-blue-900 capitalize">{measurement.type}</span>
+                      <button
+                        className="p-1 rounded hover:bg-red-100"
+                        onClick={() => handleDeleteMeasurement(measurement.id)}
+                        title="Delete"
+                      >
+                        <Trash2 className="w-4 h-4 text-red-500" />
+                      </button>
+                    </div>
+                    <div className="space-y-1 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Value:</span>
+                        <span className="font-medium">
+                          {(() => {
+                            const pixelValue = measurement.type === "line" 
+                              ? getLineLength(measurement.points)
+                              : getPolygonArea(measurement.points);
+                            const unit = measurement.type === "line" ? "px" : "px²";
+                            const realUnit = measurement.type === "line" ? scale.unitType : `${scale.unitType}²`;
+                            return `${pixelValue.toFixed(2)} ${unit} (${convertToRealUnits(pixelValue)}${measurement.type === "area" ? "²" : ""})`;
+                          })()}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Points:</span>
+                        <span className="font-medium">{measurement.points.length / 2}</span>
+                      </div>
+                      <div className="mt-3">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Material</label>
+                        <select
+                          value={measurementMaterials[measurement.id] || ""}
+                          onChange={(e) => setMeasurementMaterials(prev => ({
+                            ...prev,
+                            [measurement.id]: e.target.value
+                          }))}
+                          className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                        >
+                          <option value="">Select material...</option>
+                          {materials.map((material) => (
+                            <option key={material.id} value={material.id}>
+                              {material.name} (${material.price}/{material.unit})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      {measurementMaterials[measurement.id] && (() => {
+                        const material = materials.find(m => m.id === measurementMaterials[measurement.id]);
+                        if (!material) return null;
+                        
+                        const pixelValue = measurement.type === "line" 
+                          ? getLineLength(measurement.points)
+                          : getPolygonArea(measurement.points);
+                        const realValue = (pixelValue * scale.units) / scale.pixels;
+                        const cost = realValue * material.price;
+                        
+                        return (
+                          <div className="mt-2 p-2 bg-green-50 rounded border border-green-200">
+                            <div className="text-sm font-medium text-green-800">
+                              Cost: ${cost.toFixed(2)}
+                            </div>
+                            <div className="text-xs text-green-600">
+                              {realValue.toFixed(2)} {material.unit} × ${material.price}
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                );
+              })()
+            ) : (
+              <div className="text-gray-500">Select a measurement to view details</div>
+            )}
+          </div>
+          <div>
+            <h2 className="font-semibold text-lg mb-2">Materials</h2>
+            <div className="space-y-2">
+              {materials.map((material) => (
+                <div key={material.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                  <div>
+                    <div className="font-medium text-sm">{material.name}</div>
+                    <div className="text-xs text-gray-500">${material.price}/{material.unit}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div>
+            <h2 className="font-semibold text-lg mb-2">Cost Estimate</h2>
+            <div className="bg-green-50 p-3 rounded border border-green-200">
+              <div className="text-2xl font-bold text-green-800">
+                ${calculateTotalCost().toFixed(2)}
+              </div>
+              <div className="text-sm text-green-600">Total estimated cost</div>
+            </div>
+          </div>
+          <div>
+            <h2 className="font-semibold text-lg mb-2">Scale</h2>
+            <div className="bg-gray-50 p-3 rounded space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Scale</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    value={scale.pixels}
+                    onChange={(e) => setScale(prev => ({ ...prev, pixels: Number(e.target.value) }))}
+                    className="w-16 px-2 py-1 border border-gray-300 rounded text-sm"
+                    min="1"
+                  />
+                  <span className="text-sm text-gray-600">px =</span>
+                  <input
+                    type="number"
+                    value={scale.units}
+                    onChange={(e) => setScale(prev => ({ ...prev, units: Number(e.target.value) }))}
+                    className="w-16 px-2 py-1 border border-gray-300 rounded text-sm"
+                    min="0.1"
+                    step="0.1"
+                  />
+                  <select
+                    value={scale.unitType}
+                    onChange={(e) => setScale(prev => ({ ...prev, unitType: e.target.value }))}
+                    className="px-2 py-1 border border-gray-300 rounded text-sm"
+                  >
+                    <option value="ft">ft</option>
+                    <option value="m">m</option>
+                    <option value="in">in</option>
+                    <option value="cm">cm</option>
+                  </select>
+                </div>
+              </div>
+              <div className="text-xs text-gray-500">
+                Example: 100px = 1ft means 100 pixels on screen equals 1 foot in reality
+              </div>
+            </div>
+          </div>
+          <div>
+            <h2 className="font-semibold text-lg mb-2">Export</h2>
+            <button onClick={handleExportCSV} className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700">Export CSV</button>
+            <button onClick={handleExportPDF} className="w-full bg-blue-600 text-white py-2 rounded mt-2 hover:bg-blue-700">Export PDF</button>
+            <button onClick={handleExportImage} className="w-full bg-blue-600 text-white py-2 rounded mt-2 hover:bg-blue-700">Export Image</button>
+          </div>
+          <div>
+            <h2 className="font-semibold text-lg mb-2">Summary</h2>
+            <div className="text-gray-500">[Summary Table Placeholder]</div>
+          </div>
+        </aside>
       </div>
-
-      <Link
-        href={`/projects/${params.id}`}
-        className="mt-8 inline-block text-blue-500 hover:text-blue-700 font-semibold hover:underline"
-      >
-        ← Back to Project
-      </Link>
     </div>
-  )
+  );
 }
 
