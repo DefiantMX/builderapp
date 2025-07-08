@@ -6,6 +6,9 @@ import TakeoffCanvas, { DrawingMode, Measurement, MeasurementType } from "@/app/
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { useSession } from "next-auth/react";
+import { Document, Page, pdfjs } from 'react-pdf';
+import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
+import 'react-pdf/dist/esm/Page/TextLayer.css';
 
 // Extend jsPDF type to include lastAutoTable
 declare module "jspdf" {
@@ -28,6 +31,9 @@ type Plan = {
   updatedAt: Date;
 }
 
+// Set PDF.js worker
+pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
+
 export default function ProjectTakeoffModern({ params }: { params: { id: string } }) {
   const { data: session } = useSession()
   const [drawingMode, setDrawingMode] = useState<DrawingMode>("select")
@@ -48,6 +54,15 @@ export default function ProjectTakeoffModern({ params }: { params: { id: string 
   const [loading, setLoading] = useState(true)
 
   const selectedPlan = plans.find((p) => p.id === selectedPlanId)
+
+  // PDF state
+  const [pdfPageCount, setPdfPageCount] = useState(1);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pdfWidth, setPdfWidth] = useState(900);
+  const [pdfHeight, setPdfHeight] = useState(600);
+
+  // Store measurements per page
+  const [pageMeasurements, setPageMeasurements] = useState<Record<number, Measurement[]>>({});
 
   // Fetch measurements for the selected plan
   const fetchMeasurements = useCallback(async () => {
@@ -93,12 +108,25 @@ export default function ProjectTakeoffModern({ params }: { params: { id: string 
     fetchPlans()
   }, [params.id])
 
-  // Fetch measurements when plan changes
+  // When measurements change, update for current page
   useEffect(() => {
-    if (selectedPlanId) {
-      fetchMeasurements()
-    }
-  }, [selectedPlanId, fetchMeasurements])
+    setPageMeasurements((prev) => ({ ...prev, [currentPage]: measurements }));
+  }, [measurements, currentPage]);
+
+  // When page changes, load measurements for that page
+  useEffect(() => {
+    setMeasurements(pageMeasurements[currentPage] || []);
+  }, [currentPage]);
+
+  // PDF page change handler
+  const handlePageChange = (offset: number) => {
+    setCurrentPage((prev) => {
+      let next = prev + offset;
+      if (next < 1) next = 1;
+      if (next > pdfPageCount) next = pdfPageCount;
+      return next;
+    });
+  };
 
   // Add a new measurement (from canvas)
   const handleAddMeasurement = async (type: MeasurementType, points: number[]) => {
@@ -249,7 +277,7 @@ export default function ProjectTakeoffModern({ params }: { params: { id: string 
     if (!canvas) return;
     
     // Create a temporary link to download the canvas as image
-    const link = document.createElement('a');
+    const link = document.createElement("a");
     link.download = `takeoff-annotated-${selectedPlanId}.png`;
     link.href = canvas.toDataURL('image/png');
     document.body.appendChild(link);
@@ -370,19 +398,64 @@ export default function ProjectTakeoffModern({ params }: { params: { id: string 
         {/* Canvas Area */}
         <main className="flex-1 flex items-center justify-center p-8">
           <div className="relative w-full max-w-3xl h-[600px] bg-white rounded-lg shadow-lg flex items-center justify-center">
-            {/* Drawing Canvas */}
-            <TakeoffCanvas
-              width={900}
-              height={600}
-              backgroundImageUrl={selectedPlan?.fileUrl}
-              mode={drawingMode}
-              measurements={measurements}
-              selectedMeasurementId={selectedMeasurementId}
-              onAddMeasurement={handleAddMeasurement}
-              onSelectMeasurement={handleSelectMeasurement}
-            />
+            {/* PDF Plan Background */}
+            {selectedPlan && selectedPlan.fileType === 'application/pdf' && (
+              <Document
+                file={selectedPlan.fileUrl}
+                onLoadSuccess={({ numPages }) => setPdfPageCount(numPages)}
+                loading={<div>Loading PDF...</div>}
+                className="absolute top-0 left-0 w-full h-full z-0"
+              >
+                <Page
+                  pageNumber={currentPage}
+                  width={pdfWidth}
+                  onRenderSuccess={({ width, height }) => {
+                    setPdfWidth(width || 900);
+                    setPdfHeight(height || 600);
+                  }}
+                  renderAnnotationLayer={false}
+                  renderTextLayer={false}
+                />
+              </Document>
+            )}
+            {/* Drawing Canvas Overlay */}
+            {selectedPlan && selectedPlan.fileType === 'application/pdf' && (
+              <div style={{ position: 'absolute', top: 0, left: 0, width: pdfWidth, height: pdfHeight, pointerEvents: 'auto' }}>
+                <TakeoffCanvas
+                  width={pdfWidth}
+                  height={pdfHeight}
+                  backgroundImageUrl={undefined} // No image, PDF is rendered below
+                  mode={drawingMode}
+                  measurements={measurements}
+                  selectedMeasurementId={selectedMeasurementId}
+                  onAddMeasurement={handleAddMeasurement}
+                  onSelectMeasurement={handleSelectMeasurement}
+                />
+              </div>
+            )}
+            {/* If not PDF, fallback to image rendering */}
+            {selectedPlan && selectedPlan.fileType !== 'application/pdf' && (
+              <TakeoffCanvas
+                width={900}
+                height={600}
+                backgroundImageUrl={selectedPlan.fileUrl}
+                mode={drawingMode}
+                measurements={measurements}
+                selectedMeasurementId={selectedMeasurementId}
+                onAddMeasurement={handleAddMeasurement}
+                onSelectMeasurement={handleSelectMeasurement}
+              />
+            )}
           </div>
         </main>
+        {/* PDF Page Navigation */}
+        {selectedPlan && selectedPlan.fileType === 'application/pdf' && pdfPageCount > 1 && (
+          <div className="flex justify-center items-center gap-4 mt-2">
+            <button onClick={() => handlePageChange(-1)} disabled={currentPage === 1} className="px-2 py-1 bg-gray-200 rounded disabled:opacity-50">Prev</button>
+            <span>Page {currentPage} of {pdfPageCount}</span>
+            <button onClick={() => handlePageChange(1)} disabled={currentPage === pdfPageCount} className="px-2 py-1 bg-gray-200 rounded disabled:opacity-50">Next</button>
+          </div>
+        )}
         {/* Sidebar */}
         <aside className="w-96 bg-white border-l shadow-lg p-6 flex flex-col gap-6">
           <div className="mb-6">
