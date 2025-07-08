@@ -38,9 +38,26 @@ export default function NewPlanPage({ params }: { params: { id: string } }) {
     const description = descriptionInput?.value || ""
 
     try {
+      // Check if the file already exists in Blob storage
+      let allowOverwrite = false;
+      const checkExists = await fetch("/api/blob-exists", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filename: file.name }),
+      });
+      const { exists } = await checkExists.json();
+      if (exists) {
+        allowOverwrite = window.confirm("A file with this name already exists. Overwrite?");
+        if (!allowOverwrite) {
+          setIsSubmitting(false);
+          return;
+        }
+      }
+
       // First, upload the file
       const formData = new FormData()
       formData.append("file", file)
+      formData.append("allowOverwrite", allowOverwrite ? "true" : "false")
 
       const uploadResponse = await fetch("/api/upload", {
         method: "POST",

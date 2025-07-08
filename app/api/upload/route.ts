@@ -11,6 +11,7 @@ export async function POST(request: NextRequest) {
 
     const formData = await request.formData();
     const file = formData.get("file") as File;
+    const allowOverwrite = formData.get("allowOverwrite") === "true";
 
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
@@ -19,6 +20,7 @@ export async function POST(request: NextRequest) {
     // Upload to Vercel Blob
     const blob = await put(file.name, file.stream(), {
       access: "public",
+      allowOverwrite,
     });
 
     // Return the public URL
