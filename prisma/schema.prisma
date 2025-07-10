@@ -84,6 +84,7 @@ model Project {
   documents   Document[]
   dailyLogs   DailyLog[]
   draws       Draw[]
+  changeOrders ChangeOrder[]
 }
 
 model Task {
@@ -265,6 +266,25 @@ model Draw {
   invoices    Invoice[] @relation("DrawInvoices")
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+
+  @@index([projectId])
+}
+
+model ChangeOrder {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  amount      Float
+  status      String   @default("Pending") // Pending, Approved, Rejected
+  date        DateTime @default(now())
+  division    String
+  reason      String?  // Reason for change order
+  approvedBy  String?  // Who approved the change order
+  approvedAt  DateTime?
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId   String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   @@index([projectId])
 }

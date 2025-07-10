@@ -32,6 +32,11 @@ export default function FinanceLayout({
       name: 'Monthly Draws',
       href: `/projects/${params.id}/finance/draws`,
       current: pathname === `/projects/${params.id}/finance/draws`
+    },
+    {
+      name: 'Change Orders',
+      href: `/projects/${params.id}/finance/change-orders`,
+      current: pathname === `/projects/${params.id}/finance/change-orders`
     }
   ]
 

@@ -7,6 +7,7 @@ import BudgetForm from "@/app/components/BudgetForm"
 import CreateDrawForm from "@/app/components/CreateDrawForm"
 import EditDrawForm from "@/app/components/EditDrawForm"
 import UploadInvoiceForm from "@/app/components/UploadInvoiceForm"
+import ChangeOrderForm from "@/app/components/ChangeOrderForm"
 import { DIVISIONS } from "@/lib/constants"
 import { FileText } from "lucide-react"
 
@@ -43,6 +44,20 @@ interface Draw {
   invoices: Invoice[]
 }
 
+interface ChangeOrder {
+  id: string
+  title: string
+  description?: string
+  amount: number
+  status: string
+  date: string
+  division: string
+  reason?: string
+  approvedBy?: string
+  approvedAt?: string
+  projectId: string
+}
+
 interface ProjectBudget {
   id: string
   totalAmount: number
@@ -58,6 +73,7 @@ interface Project {
   budget: ProjectBudget | null
   invoices: Invoice[]
   draws: Draw[]
+  changeOrders: ChangeOrder[]
 }
 
 export default function ClientFinancePage({ 
@@ -65,7 +81,7 @@ export default function ClientFinancePage({
   activeTab = 'overview'
 }: { 
   projectId: string
-  activeTab?: 'overview' | 'budget' | 'invoices' | 'draws'
+  activeTab?: 'overview' | 'budget' | 'invoices' | 'draws' | 'change-orders'
 }) {
   const router = useRouter()
   const [project, setProject] = useState<Project | null>(null)
@@ -74,8 +90,10 @@ export default function ClientFinancePage({
   const [showBudgetForm, setShowBudgetForm] = useState(false)
   const [showInvoiceForm, setShowInvoiceForm] = useState(false)
   const [showDrawForm, setShowDrawForm] = useState(false)
+  const [showChangeOrderForm, setShowChangeOrderForm] = useState(false)
   const [editingDraw, setEditingDraw] = useState<Draw | null>(null)
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null)
+  const [editingChangeOrder, setEditingChangeOrder] = useState<ChangeOrder | null>(null)
   const [selectedInvoices, setSelectedInvoices] = useState<Set<string>>(new Set())
   const [overviewData, setOverviewData] = useState<{
     totalBudget: number
@@ -292,13 +310,83 @@ export default function ClientFinancePage({
     }
   };
 
+  const handleSaveChangeOrder = async (changeOrderData: any) => {
+    try {
+      const url = changeOrderData.id 
+        ? `/api/projects/${projectId}/change-orders/${changeOrderData.id}`
+        : `/api/projects/${projectId}/change-orders`
+      
+      const method = changeOrderData.id ? 'PUT' : 'POST'
+      
+      const response = await fetch(url, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(changeOrderData),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to save change order')
+      }
+
+      setShowChangeOrderForm(false)
+      setEditingChangeOrder(null)
+      window.location.reload()
+    } catch (error) {
+      console.error('Error saving change order:', error)
+      setError('Failed to save change order')
+    }
+  }
+
+  const handleDeleteChangeOrder = async (changeOrderId: string) => {
+    if (!confirm("Are you sure you want to delete this change order?")) {
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/projects/${projectId}/change-orders/${changeOrderId}`, {
+        method: "DELETE",
+      })
+
+      if (!response.ok) {
+        throw new Error("Failed to delete change order")
+      }
+
+      window.location.reload()
+    } catch (error) {
+      console.error("Error deleting change order:", error)
+    }
+  }
+
+  const handleUpdateChangeOrderStatus = async (changeOrderId: string, status: string) => {
+    try {
+      const response = await fetch(`/api/projects/${projectId}/change-orders/${changeOrderId}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ status }),
+      })
+
+      if (!response.ok) {
+        throw new Error("Failed to update change order status")
+      }
+
+      window.location.reload()
+    } catch (error) {
+      console.error("Error updating change order status:", error)
+    }
+  }
+
   // Helper function to safely get project data
   const getProjectData = () => {
     const currentProject = project
     const currentInvoices = currentProject?.invoices || []
     const currentDraws = currentProject?.draws || []
+    const currentChangeOrders = currentProject?.changeOrders || []
     const currentBudget = currentProject?.budget || null
-    return { currentProject, currentInvoices, currentDraws, currentBudget }
+    return { currentProject, currentInvoices, currentDraws, currentChangeOrders, currentBudget }
   }
 
   // Loading State
@@ -335,7 +423,7 @@ export default function ClientFinancePage({
   }
 
   // Initialize default values for project data
-  const { currentInvoices, currentDraws, currentBudget } = getProjectData()
+  const { currentInvoices, currentDraws, currentChangeOrders, currentBudget } = getProjectData()
 
   const renderBudget = () => {
     const { currentBudget } = getProjectData()
@@ -628,6 +716,123 @@ export default function ClientFinancePage({
     );
   };
 
+  const renderChangeOrders = () => {
+    const { currentChangeOrders } = getProjectData();
+
+    return (
+      <div className="space-y-6">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-2xl font-semibold">Change Orders</h2>
+          <button
+            onClick={() => {
+              setEditingChangeOrder(null)
+              setShowChangeOrderForm(true)
+            }}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+          >
+            Add Change Order
+          </button>
+        </div>
+
+        {showChangeOrderForm && (
+          <ChangeOrderForm
+            projectId={projectId}
+            changeOrder={editingChangeOrder}
+            onSave={handleSaveChangeOrder}
+            onCancel={() => {
+              setShowChangeOrderForm(false)
+              setEditingChangeOrder(null)
+            }}
+          />
+        )}
+
+        {currentChangeOrders.map((changeOrder) => (
+          <div key={changeOrder.id} className="bg-white shadow rounded-lg p-6">
+            <div className="flex justify-between items-start mb-4">
+              <div>
+                <h3 className="text-xl font-semibold">{changeOrder.title}</h3>
+                <p className="text-gray-500">{new Date(changeOrder.date).toLocaleDateString()}</p>
+                <p className="text-sm text-gray-600">Division: {DIVISIONS[changeOrder.division as keyof typeof DIVISIONS] || changeOrder.division}</p>
+              </div>
+              <div className="flex space-x-2">
+                <button
+                  onClick={() => {
+                    // Download AIA PDF
+                    fetch(`/api/projects/${projectId}/change-orders/${changeOrder.id}/export-aia`)
+                      .then(res => res.blob())
+                      .then(blob => {
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `AIA-Change-Order-${changeOrder.id}.pdf`;
+                        document.body.appendChild(a);
+                        a.click();
+                        a.remove();
+                        window.URL.revokeObjectURL(url);
+                      });
+                  }}
+                  className="flex items-center px-3 py-1 bg-green-100 text-green-800 rounded-md hover:bg-green-200"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                  Export AIA
+                </button>
+                <button
+                  onClick={() => {
+                    setEditingChangeOrder(changeOrder)
+                    setShowChangeOrderForm(true)
+                  }}
+                  className="px-3 py-1 bg-blue-100 text-blue-800 rounded-md hover:bg-blue-200"
+                >
+                  Edit
+                </button>
+                <select
+                  value={changeOrder.status}
+                  onChange={(e) => handleUpdateChangeOrderStatus(changeOrder.id, e.target.value)}
+                  className="px-3 py-1 border rounded-md text-sm"
+                >
+                  <option value="Pending">Pending</option>
+                  <option value="Approved">Approved</option>
+                  <option value="Rejected">Rejected</option>
+                </select>
+                <button
+                  onClick={() => handleDeleteChangeOrder(changeOrder.id)}
+                  className="px-3 py-1 bg-red-100 text-red-800 rounded-md hover:bg-red-200"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+
+            <div className="mb-4">
+              <p className="font-medium">Amount: ${changeOrder.amount.toLocaleString()}</p>
+              {changeOrder.description && (
+                <p className="text-gray-600 mt-2">{changeOrder.description}</p>
+              )}
+              {changeOrder.reason && (
+                <div className="mt-2">
+                  <p className="font-medium text-sm">Reason:</p>
+                  <p className="text-gray-600 text-sm">{changeOrder.reason}</p>
+                </div>
+              )}
+              {changeOrder.approvedBy && (
+                <div className="mt-2">
+                  <p className="font-medium text-sm">Approved by: {changeOrder.approvedBy}</p>
+                  {changeOrder.approvedAt && (
+                    <p className="text-gray-600 text-sm">on {new Date(changeOrder.approvedAt).toLocaleDateString()}</p>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+
+        {currentChangeOrders.length === 0 && (
+          <p className="text-gray-500 text-center py-8">No change orders found.</p>
+        )}
+      </div>
+    );
+  };
+
   const renderOverview = () => (
     <div className="space-y-6">
       <div className="bg-white shadow-lg rounded-lg p-6">
@@ -704,6 +909,8 @@ export default function ClientFinancePage({
         return renderInvoices()
       case 'draws':
         return renderDraws()
+      case 'change-orders':
+        return renderChangeOrders()
       case 'overview':
       default:
         return renderOverview()

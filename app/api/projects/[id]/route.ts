@@ -40,6 +40,11 @@ export async function GET(
           include: {
             invoices: true
           }
+        },
+        changeOrders: {
+          orderBy: {
+            createdAt: 'desc'
+          }
         }
       }
     })
