@@ -13,12 +13,12 @@ export default function TeamsPage() {
         <div className="bg-white shadow rounded-lg p-6">
           <h2 className="text-xl font-semibold mb-2">Team Members</h2>
           <p className="text-gray-600 mb-4">See who is on your team and their roles.</p>
-          <span className="text-gray-400">Coming soon</span>
+          <Link href="/teams/team-members" className="text-blue-600 hover:underline font-medium">Go to Team Members</Link>
         </div>
         <div className="bg-white shadow rounded-lg p-6">
           <h2 className="text-xl font-semibold mb-2">Announcements</h2>
           <p className="text-gray-600 mb-4">Share important updates with your team.</p>
-          <span className="text-gray-400">Coming soon</span>
+          <Link href="/teams/announcements" className="text-blue-600 hover:underline font-medium">Go to Announcements</Link>
         </div>
       </div>
     </div>
