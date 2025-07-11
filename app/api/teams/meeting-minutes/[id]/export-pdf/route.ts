@@ -22,33 +22,34 @@ export async function GET(
 
     page.drawText('Meeting Minutes', { x: 40, y, size: 20, font: fontBold, color: rgb(0,0,0) });
     y -= 30;
-    page.drawText(`Title: ${minute.title}`, { x: 40, y, size: 14, font });
+    page.drawText(`Title: ${minute.title || ''}`, { x: 40, y, size: 14, font });
     y -= 20;
-    page.drawText(`Date: ${new Date(minute.date).toLocaleDateString()}`, { x: 40, y, size: 12, font });
+    page.drawText(`Date: ${minute.date ? new Date(minute.date).toLocaleDateString() : ''}`, { x: 40, y, size: 12, font });
     y -= 18;
-    page.drawText(`Created by: ${minute.createdBy}`, { x: 40, y, size: 12, font });
+    page.drawText(`Created by: ${minute.createdBy || ''}`, { x: 40, y, size: 12, font });
     y -= 24;
-    page.drawText('Content:', { x: 40, y, size: 12, fontBold });
+    page.drawText('Content:', { x: 40, y, size: 12, font: fontBold });
     y -= 18;
-    const contentLines = minute.content.split('\n');
+    const contentLines = (minute.content || '').split('\n');
     for (const line of contentLines) {
+      if (y < 60) { y = height - 50; page = pdfDoc.addPage([612, 792]); }
       page.drawText(line, { x: 50, y, size: 12, font });
       y -= 16;
     }
     y -= 10;
-    page.drawText('Action Items:', { x: 40, y, size: 12, fontBold });
+    page.drawText('Action Items:', { x: 40, y, size: 12, font: fontBold });
     y -= 18;
-    if (minute.actionItems.length === 0) {
+    if (!minute.actionItems || minute.actionItems.length === 0) {
       page.drawText('No action items.', { x: 50, y, size: 12, font, color: rgb(0.5,0.5,0.5) });
     } else {
       for (const item of minute.actionItems) {
-        let line = `- ${item.description}`;
+        let line = `- ${item.description || ''}`;
         if (item.assignedTo) line += ` (Assigned to: ${item.assignedTo})`;
         if (item.dueDate) line += ` (Due: ${item.dueDate.slice(0,10)})`;
         if (item.completed) line += ' [Completed]';
+        if (y < 60) { y = height - 50; page = pdfDoc.addPage([612, 792]); }
         page.drawText(line, { x: 50, y, size: 12, font });
         y -= 16;
-        if (y < 60) { y = height - 50; page = pdfDoc.addPage([612, 792]); }
       }
     }
 
@@ -61,6 +62,7 @@ export async function GET(
       },
     });
   } catch (error) {
-    return NextResponse.json({ error: 'Failed to generate PDF' }, { status: 500 });
+    console.error('PDF export error:', error);
+    return NextResponse.json({ error: 'Failed to generate PDF', details: error?.message || error }, { status: 500 });
   }
 } 
