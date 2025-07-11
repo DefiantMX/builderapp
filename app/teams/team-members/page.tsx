@@ -93,7 +93,10 @@ export default function TeamMembersPage() {
       
       if (res.ok) {
         const data = await res.json();
-        setInviteSuccess(`Invitation sent! Invite link: ${data.inviteLink}`);
+        const message = data.warning 
+          ? `${data.warning} Invite link: ${data.inviteLink}`
+          : data.message || 'Invitation sent successfully!';
+        setInviteSuccess(message);
         setInviteForm({ name: '', email: '', role: 'Member', permissions: [] });
         setShowInviteForm(false);
       } else {
