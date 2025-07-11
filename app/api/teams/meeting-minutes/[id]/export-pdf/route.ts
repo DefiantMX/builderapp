@@ -14,7 +14,7 @@ export async function GET(
     if (!minute) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
     const pdfDoc = await PDFDocument.create();
-    const page = pdfDoc.addPage([612, 792]); // Letter size
+    let page = pdfDoc.addPage([612, 792]); // Letter size
     const { width, height } = page.getSize();
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
     const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
