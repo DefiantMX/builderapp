@@ -14,6 +14,8 @@ export default function AnnouncementsPage() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ title: "", content: "", createdBy: "" });
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({ title: '', content: '', createdBy: '' });
 
   useEffect(() => {
     fetch("/api/teams/announcements")
@@ -34,6 +36,32 @@ export default function AnnouncementsPage() {
       setAnnouncements([newAnnouncement, ...announcements]);
       setShowForm(false);
       setForm({ title: "", content: "", createdBy: "" });
+    }
+  };
+
+  const handleEdit = (a: Announcement) => {
+    setEditingId(a.id);
+    setEditForm({ title: a.title, content: a.content, createdBy: a.createdBy });
+  };
+
+  const handleEditSave = async (id: string) => {
+    const res = await fetch(`/api/teams/announcements/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(editForm),
+    });
+    if (res.ok) {
+      const updated = await res.json();
+      setAnnouncements(announcements.map((a) => (a.id === id ? { ...a, ...updated } : a)));
+      setEditingId(null);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this announcement?')) return;
+    const res = await fetch(`/api/teams/announcements/${id}`, { method: 'DELETE' });
+    if (res.ok) {
+      setAnnouncements(announcements.filter((a) => a.id !== id));
     }
   };
 
@@ -98,8 +126,56 @@ export default function AnnouncementsPage() {
               </div>
               <div className="mb-2 text-gray-700 whitespace-pre-line">{a.content}</div>
               <div className="text-sm text-gray-500 mb-2">Posted by: {a.createdBy}</div>
-              {/* Edit and Delete buttons will go here */}
-              <span className="text-xs text-gray-400">Edit/Delete coming soon</span>
+              {editingId === a.id ? (
+                <div className="space-y-2 mb-2">
+                  <input
+                    className="w-full border px-3 py-2 rounded mb-2"
+                    value={editForm.title}
+                    onChange={e => setEditForm({ ...editForm, title: e.target.value })}
+                  />
+                  <textarea
+                    className="w-full border px-3 py-2 rounded mb-2"
+                    value={editForm.content}
+                    onChange={e => setEditForm({ ...editForm, content: e.target.value })}
+                  />
+                  <input
+                    className="w-full border px-3 py-2 rounded mb-2"
+                    value={editForm.createdBy}
+                    onChange={e => setEditForm({ ...editForm, createdBy: e.target.value })}
+                  />
+                  <div className="flex space-x-2">
+                    <button
+                      className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700"
+                      onClick={() => handleEditSave(a.id)}
+                      type="button"
+                    >
+                      Save
+                    </button>
+                    <button
+                      className="px-3 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
+                      onClick={() => setEditingId(null)}
+                      type="button"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex space-x-2 mb-2">
+                  <button
+                    className="px-3 py-1 bg-blue-100 text-blue-800 rounded hover:bg-blue-200"
+                    onClick={() => handleEdit(a)}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    className="px-3 py-1 bg-red-100 text-red-800 rounded hover:bg-red-200"
+                    onClick={() => handleDelete(a.id)}
+                  >
+                    Delete
+                  </button>
+                </div>
+              )}
             </div>
           ))}
         </div>
