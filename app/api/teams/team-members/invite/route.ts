@@ -14,6 +14,30 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
+    // Check if a team member with this email already exists
+    const existingMember = await prisma.teamMember.findUnique({
+      where: { email }
+    });
+
+    if (existingMember) {
+      return NextResponse.json({ 
+        error: 'Email already exists', 
+        details: `A team member with email ${email} already exists.` 
+      }, { status: 409 });
+    }
+
+    // Check if a user with this email already exists
+    const existingUser = await prisma.user.findUnique({
+      where: { email }
+    });
+
+    if (existingUser) {
+      return NextResponse.json({ 
+        error: 'Email already exists', 
+        details: `A user with email ${email} already exists. Please use the "Convert to User" feature instead.` 
+      }, { status: 409 });
+    }
+
     // Generate a unique invite token
     const inviteToken = randomBytes(24).toString('hex');
     const invitedAt = new Date();
@@ -40,6 +64,15 @@ export async function POST(req: NextRequest) {
     });
   } catch (error) {
     console.error('Invite error:', error);
+    
+    // Handle Prisma unique constraint error specifically
+    if (error.code === 'P2002') {
+      return NextResponse.json({ 
+        error: 'Email already exists', 
+        details: 'A user or team member with this email address already exists.' 
+      }, { status: 409 });
+    }
+    
     return NextResponse.json({ 
       error: 'Failed to invite user', 
       details: error?.message || error 
