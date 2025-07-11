@@ -45,7 +45,17 @@ export async function GET(
       for (const item of minute.actionItems) {
         let line = `- ${item.description || ''}`;
         if (item.assignedTo) line += ` (Assigned to: ${item.assignedTo})`;
-        if (item.dueDate) line += ` (Due: ${item.dueDate.slice(0,10)})`;
+        if (item.dueDate) {
+          let dueDateStr = '';
+          if (typeof item.dueDate === 'string') {
+            dueDateStr = item.dueDate.slice(0, 10);
+          } else if (item.dueDate instanceof Date) {
+            dueDateStr = item.dueDate.toISOString().slice(0, 10);
+          } else if (typeof item.dueDate === 'object' && item.dueDate !== null && 'toISOString' in item.dueDate) {
+            dueDateStr = item.dueDate.toISOString().slice(0, 10);
+          }
+          if (dueDateStr) line += ` (Due: ${dueDateStr})`;
+        }
         if (item.completed) line += ' [Completed]';
         if (y < 60) { y = height - 50; page = pdfDoc.addPage([612, 792]); }
         page.drawText(line, { x: 50, y, size: 12, font });
