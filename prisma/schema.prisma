@@ -52,6 +52,7 @@ model User {
   accounts      Account[]
   sessions      Session[]
   projects      Project[]
+  teamMembers   TeamMember[] // Link to TeamMembers if converted from one
 }
 
 model VerificationToken {
@@ -313,11 +314,20 @@ model ActionItem {
 }
 
 model TeamMember {
-  id        String   @id @default(cuid())
-  name      String
-  email     String   @unique
-  role      String   // Admin, Member, Guest, etc.
-  joinedAt  DateTime @default(now())
+  id          String   @id @default(cuid())
+  name        String
+  email       String   @unique
+  role        String   // Admin, Member, Guest, etc.
+  joinedAt    DateTime @default(now())
+  status      String   @default("active") // active, invited, pending, etc.
+  inviteToken String?  @unique
+  invitedAt   DateTime?
+  permissions Json?    // e.g. ["projects:view", "finances:edit", ...]
+  userId      String?  // Link to User account if converted
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  isConverted Boolean  @default(false) // Track if converted to user
+
+  @@unique([userId])
 }
 
 model Announcement {
