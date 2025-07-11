@@ -84,18 +84,27 @@ export default function TeamMembersPage() {
     e.preventDefault();
     setInviteLoading(true);
     setInviteSuccess(null);
-    const res = await fetch('/api/teams/team-members/invite', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(inviteForm),
-    });
-    setInviteLoading(false);
-    if (res.ok) {
-      setInviteSuccess('Invitation sent!');
-      setInviteForm({ name: '', email: '', role: 'Member', permissions: [] });
-      setShowInviteForm(false);
-    } else {
-      setInviteSuccess('Failed to send invite.');
+    try {
+      const res = await fetch('/api/teams/team-members/invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(inviteForm),
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        setInviteSuccess(`Invitation sent! Invite link: ${data.inviteLink}`);
+        setInviteForm({ name: '', email: '', role: 'Member', permissions: [] });
+        setShowInviteForm(false);
+      } else {
+        const errorData = await res.json();
+        setInviteSuccess(`Failed to send invite: ${errorData.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Invite error:', error);
+      setInviteSuccess('Failed to send invite. Please try again.');
+    } finally {
+      setInviteLoading(false);
     }
   };
 
