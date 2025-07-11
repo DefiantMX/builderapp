@@ -288,3 +288,43 @@ model ChangeOrder {
 
   @@index([projectId])
 }
+
+model MeetingMinute {
+  id          String   @id @default(cuid())
+  title       String
+  date        DateTime @default(now())
+  content     String
+  createdBy   String
+  actionItems ActionItem[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model ActionItem {
+  id            String   @id @default(cuid())
+  description   String
+  assignedTo    String?
+  dueDate       DateTime?
+  completed     Boolean  @default(false)
+  meetingMinute MeetingMinute @relation(fields: [meetingMinuteId], references: [id], onDelete: Cascade)
+  meetingMinuteId String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model TeamMember {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  role      String   // Admin, Member, Guest, etc.
+  joinedAt  DateTime @default(now())
+}
+
+model Announcement {
+  id        String   @id @default(cuid())
+  title     String
+  content   String
+  createdBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

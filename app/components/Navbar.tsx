@@ -23,6 +23,12 @@ export default function Navbar() {
                   Projects
                 </Link>
                 <Link
+                  href="/teams"
+                  className="px-3 py-2 rounded-md text-sm font-medium hover:bg-gray-700"
+                >
+                  Teams
+                </Link>
+                <Link
                   href="/tasks"
                   className="px-3 py-2 rounded-md text-sm font-medium hover:bg-gray-700"
                 >
