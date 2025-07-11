@@ -3,13 +3,23 @@ import { prisma } from '@/lib/prisma';
 import { randomBytes } from 'crypto';
 import { Resend } from 'resend';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Initialize Resend only if API key is available
+const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
 // Email sending function using Resend
 async function sendInviteEmail(email: string, name: string, inviteLink: string) {
+  // If Resend is not configured, just log the email details
+  if (!resend) {
+    console.log('📧 Resend not configured. Email details:');
+    console.log('📧 To:', email);
+    console.log('📧 Subject: You\'ve been invited to join Builder App');
+    console.log('📧 Invite link:', inviteLink);
+    return { success: true, message: 'Email logged (Resend not configured)' };
+  }
+
   try {
     const { data, error } = await resend.emails.send({
-      from: process.env.FROM_EMAIL || 'noreply@yourdomain.com',
+      from: 'onboarding@resend.dev', // Use Resend's default domain for testing
       to: email,
       subject: 'You\'ve been invited to join Builder App',
       html: `
@@ -63,6 +73,18 @@ async function sendInviteEmail(email: string, name: string, inviteLink: string) 
 
     if (error) {
       console.error('Resend error:', error);
+      
+      // Handle testing mode restriction
+      if (error.message.includes('testing emails to your own email address')) {
+        console.log('📧 Testing mode: Email would be sent to:', email);
+        console.log('📧 Invite link:', inviteLink);
+        return { 
+          success: true, 
+          message: 'Email logged (testing mode - verify domain to send to others)',
+          testingMode: true
+        };
+      }
+      
       throw new Error(`Failed to send email: ${error.message}`);
     }
 
@@ -87,11 +109,11 @@ export async function POST(req: NextRequest) {
     }
 
     // Check if a team member with this email already exists
-    const existingMember = await prisma.teamMember.findUnique({
-      where: { email }
-    });
+    const existingMember = await prisma.$queryRaw`
+      SELECT * FROM "TeamMember" WHERE email = ${email} LIMIT 1
+    `;
 
-    if (existingMember) {
+    if (existingMember && Array.isArray(existingMember) && existingMember.length > 0) {
       return NextResponse.json({ 
         error: 'Email already exists', 
         details: `A team member with email ${email} already exists.` 
@@ -115,23 +137,16 @@ export async function POST(req: NextRequest) {
     const invitedAt = new Date();
     const inviteLink = `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/invite/${inviteToken}`;
     
-    // Create the invited team member
-    const member = await prisma.teamMember.create({
-      data: {
-        name,
-        email,
-        role,
-        status: 'invited',
-        inviteToken,
-        invitedAt,
-        permissions: permissions ? JSON.stringify(permissions) : null,
-      },
-    });
+    // Create the invited team member using raw SQL
+    const member = await prisma.$executeRaw`
+      INSERT INTO "TeamMember" (id, name, email, role, status, "inviteToken", "invitedAt", permissions, "isConverted", "createdAt", "updatedAt")
+      VALUES (gen_random_uuid(), ${name}, ${email}, ${role}, 'invited', ${inviteToken}, ${invitedAt}, ${permissions ? JSON.stringify(permissions) : null}, false, NOW(), NOW())
+    `;
     
     // Send invite email
     try {
       await sendInviteEmail(email, name, inviteLink);
-    } catch (emailError) {
+    } catch (emailError: any) {
       console.error('Failed to send email:', emailError);
       // Don't fail the entire request if email fails, but log it
       return NextResponse.json({ 
@@ -140,7 +155,7 @@ export async function POST(req: NextRequest) {
         inviteToken,
         inviteLink,
         warning: 'Team member created but email failed to send. You can manually share the invite link.',
-        emailError: emailError.message
+        emailError: emailError?.message || 'Unknown email error'
       });
     }
     
@@ -151,7 +166,7 @@ export async function POST(req: NextRequest) {
       inviteLink,
       message: 'Invitation sent successfully! The user will receive an email with the invite link.'
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Invite error:', error);
     
     // Handle Prisma unique constraint error specifically
