@@ -140,7 +140,7 @@ export async function POST(req: NextRequest) {
     // Create the invited team member using raw SQL
     const member = await prisma.$executeRaw`
       INSERT INTO "TeamMember" (id, name, email, role, status, "inviteToken", "invitedAt", permissions, "isConverted", "joinedAt")
-      VALUES (gen_random_uuid(), ${name}, ${email}, ${role}, 'invited', ${inviteToken}, ${invitedAt}, ${permissions ? JSON.stringify(permissions) : null}, false, NOW())
+      VALUES (gen_random_uuid(), ${name}, ${email}, ${role}, 'invited', ${inviteToken}, ${invitedAt}, ${permissions ? JSON.stringify(permissions) : null}::jsonb, false, NOW())
     `;
     
     // Send invite email
