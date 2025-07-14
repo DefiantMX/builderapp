@@ -218,18 +218,21 @@ export default function TakeoffViewer({ plan, measurements, onMeasurementSave, o
   }
 
   function onPageLoadSuccess({ width, height }: { width: number; height: number }) {
-    setPageDimensions({ width, height })
-    
+    // Defensive: log and fallback for invalid width/height/scale
+    console.log('onPageLoadSuccess width:', width, 'height:', height, 'scale:', scale);
+    let safeWidth = (typeof width === 'number' && width > 0 && isFinite(width)) ? width : 800;
+    let safeHeight = (typeof height === 'number' && height > 0 && isFinite(height)) ? height : 600;
+    let safeScale = (typeof scale === 'number' && scale > 0 && isFinite(scale)) ? scale : 1;
+    setPageDimensions({ width: safeWidth, height: safeHeight });
     // Update canvas dimensions
     if (canvasRef.current) {
-      canvasRef.current.width = width * scale
-      canvasRef.current.height = height * scale
-      
-      const context = canvasRef.current.getContext("2d")
+      canvasRef.current.width = safeWidth * safeScale;
+      canvasRef.current.height = safeHeight * safeScale;
+      const context = canvasRef.current.getContext("2d");
       if (context) {
-        context.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height)
-        drawMeasurements(context)
-        drawCurrentMeasurement(context)
+        context.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+        drawMeasurements(context);
+        drawCurrentMeasurement(context);
       }
     }
   }
