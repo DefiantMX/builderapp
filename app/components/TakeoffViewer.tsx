@@ -659,7 +659,7 @@ export default function TakeoffViewer({ plan, measurements, onMeasurementSave, o
   );
 
   // Uncomment the line below to test simple PDF rendering
-  // return renderSimplePDF();
+  return renderSimplePDF();
 
   return (
     <div className="flex flex-col h-full">
