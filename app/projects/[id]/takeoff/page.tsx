@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Upload, Ruler, Square, Undo2, Redo2, Download, MousePointerClick, Trash2 } from "lucide-react";
 import TakeoffCanvas, { DrawingMode, Measurement, MeasurementType } from "@/app/components/TakeoffCanvas";
+import TakeoffViewer from "@/app/components/TakeoffViewer";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { useSession } from "next-auth/react";
@@ -400,40 +401,14 @@ export default function ProjectTakeoffModern({ params }: { params: { id: string 
         {/* Canvas Area */}
         <main className="flex-1 flex items-center justify-center p-8">
           <div className="relative w-full max-w-3xl bg-white rounded-lg shadow-lg flex items-center justify-center" style={{ minHeight: 600 }}>
-            {/* PDF Plan Background */}
+            {/* Use TakeoffViewer for PDF rendering */}
             {selectedPlan && selectedPlan.fileType === 'application/pdf' && (
-              <>
-                <Document
-                  file={selectedPlan.fileUrl}
-                  onLoadSuccess={({ numPages }) => setPdfPageCount(numPages)}
-                  loading={<div>Loading PDF...</div>}
-                  error={<div>Failed to load PDF</div>}
-                  className="absolute top-0 left-0 w-full h-full z-0"
-                >
-                  <Page
-                    pageNumber={currentPage}
-                    width={pdfWidth}
-                    onRenderSuccess={({ width }) => {
-                      setPdfWidth(width || 900);
-                    }}
-                    renderAnnotationLayer={false}
-                    renderTextLayer={false}
-                  />
-                </Document>
-                {/* Drawing Canvas Overlay */}
-                <div style={{ position: 'absolute', top: 0, left: 0, width: pdfWidth, height: '100%', pointerEvents: 'auto' }}>
-                  <TakeoffCanvas
-                    width={pdfWidth}
-                    height={600}
-                    backgroundImageUrl={undefined}
-                    mode={drawingMode}
-                    measurements={measurements}
-                    selectedMeasurementId={selectedMeasurementId}
-                    onAddMeasurement={handleAddMeasurement}
-                    onSelectMeasurement={handleSelectMeasurement}
-                  />
-                </div>
-              </>
+              <TakeoffViewer
+                plan={selectedPlan}
+                measurements={measurements}
+                onMeasurementSave={handleAddMeasurement}
+                onMeasurementDelete={handleDeleteMeasurement}
+              />
             )}
             {/* If not PDF, fallback to image rendering */}
             {selectedPlan && selectedPlan.fileType !== 'application/pdf' && (
