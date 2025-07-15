@@ -16,7 +16,14 @@ import type { Plan } from "@prisma/client"
 
 // Initialize PDF.js worker
 if (typeof window !== 'undefined') {
-  pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`
+  // Use a more reliable CDN and add error handling
+  try {
+    pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`;
+  } catch (error) {
+    console.error('Failed to set PDF worker:', error);
+    // Fallback to the original CDN
+    pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
+  }
 }
 
 type Point = {
@@ -102,17 +109,20 @@ export default function TakeoffViewer({ plan, measurements, onMeasurementSave, o
     const fetchPdf = async () => {
       try {
         setLoading(true)
+        console.log('Fetching PDF from:', plan.fileUrl);
         const response = await fetch(plan.fileUrl)
+        console.log('PDF fetch response status:', response.status);
         if (!response.ok) {
-          throw new Error('Failed to fetch PDF')
+          throw new Error(`Failed to fetch PDF: ${response.status} ${response.statusText}`)
         }
         const blob = await response.blob()
+        console.log('PDF blob size:', blob.size, 'bytes');
         const dataUrl = URL.createObjectURL(blob)
         setPdfData(dataUrl)
         setError(null)
       } catch (err) {
         console.error("Error loading PDF:", err)
-        setError('Error loading PDF. Please try again.')
+        setError(`Error loading PDF: ${err instanceof Error ? err.message : 'Unknown error'}`)
       } finally {
         setLoading(false)
       }
