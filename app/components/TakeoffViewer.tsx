@@ -635,9 +635,9 @@ export default function TakeoffViewer({ plan, measurements, onMeasurementSave, o
 
   // Simple test: render just the PDF without overlays
   const renderSimplePDF = () => (
-    <div className="border-2 border-red-500 p-4" style={{ minHeight: '600px', width: '100%' }}>
+    <div className="border-2 border-red-500 p-4" style={{ width: '100%' }}>
       <h3 className="text-lg font-bold mb-2">PDF Test (No Overlays)</h3>
-      <div style={{ width: '100%', height: '500px', overflow: 'auto' }}>
+      <div style={{ width: '100%', minHeight: '600px', display: 'flex', justifyContent: 'center' }}>
         <Document
           file={pdfData}
           onLoadSuccess={onDocumentLoadSuccess}
@@ -646,7 +646,7 @@ export default function TakeoffViewer({ plan, measurements, onMeasurementSave, o
         >
           <Page
             pageNumber={1}
-            scale={1.5}
+            scale={2.0}
             renderAnnotationLayer={false}
             renderTextLayer={false}
             loading={<div className="flex justify-center items-center h-64">Loading page...</div>}
