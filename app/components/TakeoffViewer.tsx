@@ -635,26 +635,28 @@ export default function TakeoffViewer({ plan, measurements, onMeasurementSave, o
 
   // Simple test: render just the PDF without overlays
   const renderSimplePDF = () => (
-    <div className="border-2 border-red-500 p-4" style={{ minHeight: '400px' }}>
+    <div className="border-2 border-red-500 p-4" style={{ minHeight: '600px', width: '100%' }}>
       <h3 className="text-lg font-bold mb-2">PDF Test (No Overlays)</h3>
-      <Document
-        file={pdfData}
-        onLoadSuccess={onDocumentLoadSuccess}
-        loading={<div className="flex justify-center items-center h-64">Loading PDF...</div>}
-        error={<div className="flex justify-center items-center h-64 text-red-500">Error loading PDF. Please try again.</div>}
-      >
-        <Page
-          pageNumber={1}
-          scale={1}
-          renderAnnotationLayer={false}
-          renderTextLayer={false}
-          loading={<div className="flex justify-center items-center h-64">Loading page...</div>}
-          onLoadSuccess={onPageLoadSuccess}
-          onLoadError={(error) => {
-            console.error('Page load error:', error);
-          }}
-        />
-      </Document>
+      <div style={{ width: '100%', height: '500px', overflow: 'auto' }}>
+        <Document
+          file={pdfData}
+          onLoadSuccess={onDocumentLoadSuccess}
+          loading={<div className="flex justify-center items-center h-64">Loading PDF...</div>}
+          error={<div className="flex justify-center items-center h-64 text-red-500">Error loading PDF. Please try again.</div>}
+        >
+          <Page
+            pageNumber={1}
+            scale={1.5}
+            renderAnnotationLayer={false}
+            renderTextLayer={false}
+            loading={<div className="flex justify-center items-center h-64">Loading page...</div>}
+            onLoadSuccess={onPageLoadSuccess}
+            onLoadError={(error) => {
+              console.error('Page load error:', error);
+            }}
+          />
+        </Document>
+      </div>
     </div>
   );
 
