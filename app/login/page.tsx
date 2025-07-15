@@ -23,7 +23,9 @@ export default function LoginPage() {
         email,
         password,
         callbackUrl: "/",
-        baseUrl: "http://localhost:3000"
+        baseUrl: typeof window !== 'undefined' 
+          ? window.location.origin 
+          : process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"
       })
 
       if (result?.error) {
