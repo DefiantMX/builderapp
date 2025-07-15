@@ -1,28 +1,27 @@
 import { NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authConfig } from "@/lib/auth.config"
-import { db } from "@/lib/db"
 
 export async function GET() {
   try {
+    console.log('API /user route called');
+    
     const session = await getServerSession(authConfig)
+    console.log('Session:', session);
     
     if (!session?.user?.email) {
+      console.log('No session or user email found');
       return NextResponse.json({ message: "Not authenticated" }, { status: 401 })
     }
 
-    // Get user from database
-    const user = await db.user.findUnique({
-      where: { email: session.user.email }
+    console.log('User email found:', session.user.email);
+    
+    // For now, just return the session user data
+    return NextResponse.json({
+      id: session.user.id,
+      email: session.user.email,
+      name: session.user.name
     })
-
-    if (!user) {
-      return NextResponse.json({ message: "User not found" }, { status: 404 })
-    }
-
-    // Return user data without password
-    const { password: _, ...userData } = user
-    return NextResponse.json(userData)
   } catch (error) {
     console.error('Error in /api/user:', error)
     return NextResponse.json({ message: "Internal server error" }, { status: 500 })
