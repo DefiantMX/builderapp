@@ -16,13 +16,20 @@ import type { Plan } from "@prisma/client"
 
 // Initialize PDF.js worker
 if (typeof window !== 'undefined') {
-  // Use a more reliable CDN and add error handling
+  // Use a more reliable worker setup
   try {
-    pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`;
+    // Try the official CDN first
+    pdfjs.GlobalWorkerOptions.workerSrc = `//cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`;
   } catch (error) {
-    console.error('Failed to set PDF worker:', error);
-    // Fallback to the original CDN
-    pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
+    console.error('Failed to set PDF worker with jsdelivr:', error);
+    try {
+      // Fallback to unpkg
+      pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`;
+    } catch (fallbackError) {
+      console.error('Failed to set PDF worker with unpkg:', fallbackError);
+      // Final fallback to original CDN
+      pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
+    }
   }
 }
 
@@ -110,6 +117,11 @@ export default function TakeoffViewer({ plan, measurements, onMeasurementSave, o
       try {
         setLoading(true)
         console.log('Fetching PDF from:', plan.fileUrl);
+        
+        // Test if the URL is accessible
+        const testResponse = await fetch(plan.fileUrl, { method: 'HEAD' });
+        console.log('PDF URL test response:', testResponse.status, testResponse.statusText);
+        
         const response = await fetch(plan.fileUrl)
         console.log('PDF fetch response status:', response.status);
         if (!response.ok) {
@@ -117,7 +129,11 @@ export default function TakeoffViewer({ plan, measurements, onMeasurementSave, o
         }
         const blob = await response.blob()
         console.log('PDF blob size:', blob.size, 'bytes');
+        if (blob.size === 0) {
+          throw new Error('PDF blob is empty (0 bytes)');
+        }
         const dataUrl = URL.createObjectURL(blob)
+        console.log('PDF data URL created:', dataUrl.substring(0, 50) + '...');
         setPdfData(dataUrl)
         setError(null)
       } catch (err) {
