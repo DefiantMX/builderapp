@@ -16,19 +16,25 @@ import type { Plan } from "@prisma/client"
 
 // Initialize PDF.js worker
 if (typeof window !== 'undefined') {
-  // Use a more reliable worker setup
+  // Try to disable worker for testing
   try {
-    // Try the official CDN first
-    pdfjs.GlobalWorkerOptions.workerSrc = `//cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`;
+    // Option 1: Try using a local worker
+    pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js';
   } catch (error) {
-    console.error('Failed to set PDF worker with jsdelivr:', error);
+    console.error('Failed to set local PDF worker:', error);
     try {
-      // Fallback to unpkg
-      pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`;
+      // Option 2: Try jsdelivr CDN
+      pdfjs.GlobalWorkerOptions.workerSrc = `//cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`;
     } catch (fallbackError) {
-      console.error('Failed to set PDF worker with unpkg:', fallbackError);
-      // Final fallback to original CDN
-      pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
+      console.error('Failed to set PDF worker with jsdelivr:', fallbackError);
+      try {
+        // Option 3: Try unpkg
+        pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`;
+      } catch (finalError) {
+        console.error('Failed to set PDF worker with unpkg:', finalError);
+        // Option 4: Final fallback to original CDN
+        pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
+      }
     }
   }
 }
@@ -626,6 +632,34 @@ export default function TakeoffViewer({ plan, measurements, onMeasurementSave, o
   if (!pdfData) {
     return <div className="flex justify-center items-center h-64">No PDF data available</div>
   }
+
+  // Simple test: render just the PDF without overlays
+  const renderSimplePDF = () => (
+    <div className="border-2 border-red-500 p-4" style={{ minHeight: '400px' }}>
+      <h3 className="text-lg font-bold mb-2">PDF Test (No Overlays)</h3>
+      <Document
+        file={pdfData}
+        onLoadSuccess={onDocumentLoadSuccess}
+        loading={<div className="flex justify-center items-center h-64">Loading PDF...</div>}
+        error={<div className="flex justify-center items-center h-64 text-red-500">Error loading PDF. Please try again.</div>}
+      >
+        <Page
+          pageNumber={1}
+          scale={1}
+          renderAnnotationLayer={false}
+          renderTextLayer={false}
+          loading={<div className="flex justify-center items-center h-64">Loading page...</div>}
+          onLoadSuccess={onPageLoadSuccess}
+          onLoadError={(error) => {
+            console.error('Page load error:', error);
+          }}
+        />
+      </Document>
+    </div>
+  );
+
+  // Uncomment the line below to test simple PDF rendering
+  // return renderSimplePDF();
 
   return (
     <div className="flex flex-col h-full">
