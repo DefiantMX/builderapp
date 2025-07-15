@@ -213,6 +213,7 @@ export default function TakeoffViewer({ plan, measurements, onMeasurementSave, o
   }, [measuring, measurementType, points, finishAreaMeasurement]);
 
   function onDocumentLoadSuccess({ numPages }: { numPages: number }) {
+    console.log('Document loaded successfully with', numPages, 'pages');
     setNumPages(numPages)
     setPageNumber(1)
   }
@@ -223,11 +224,13 @@ export default function TakeoffViewer({ plan, measurements, onMeasurementSave, o
     let safeWidth = (typeof width === 'number' && width > 0 && isFinite(width)) ? width : 800;
     let safeHeight = (typeof height === 'number' && height > 0 && isFinite(height)) ? height : 600;
     let safeScale = (typeof scale === 'number' && scale > 0 && isFinite(scale)) ? scale : 1;
+    console.log('Using safe dimensions:', { safeWidth, safeHeight, safeScale });
     setPageDimensions({ width: safeWidth, height: safeHeight });
     // Update canvas dimensions
     if (canvasRef.current) {
       canvasRef.current.width = safeWidth * safeScale;
       canvasRef.current.height = safeHeight * safeScale;
+      console.log('Canvas dimensions set to:', canvasRef.current.width, 'x', canvasRef.current.height);
       const context = canvasRef.current.getContext("2d");
       if (context) {
         context.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
@@ -662,7 +665,7 @@ export default function TakeoffViewer({ plan, measurements, onMeasurementSave, o
 
       <div className="flex flex-1 min-h-0 p-4 gap-4">
         <div className="flex-1 overflow-auto">
-          <div className="relative border rounded-lg overflow-hidden bg-white h-full" ref={containerRef}>
+          <div className="relative border rounded-lg overflow-hidden bg-white h-full" ref={containerRef} style={{ minHeight: '400px' }}>
             <Document
               file={pdfData}
               onLoadSuccess={onDocumentLoadSuccess}
@@ -676,6 +679,9 @@ export default function TakeoffViewer({ plan, measurements, onMeasurementSave, o
                 renderTextLayer={false}
                 loading={<div className="flex justify-center items-center h-64">Loading page...</div>}
                 onLoadSuccess={onPageLoadSuccess}
+                onLoadError={(error) => {
+                  console.error('Page load error:', error);
+                }}
               />
             </Document>
             <canvas
