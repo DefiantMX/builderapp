@@ -25,7 +25,8 @@ export default async function ProjectPage({ params }: { params: { id: string } }
     include: {
       tasks: true,
       plans: true,
-      events: true
+      events: true,
+      bids: true
     }
   })
 
@@ -41,7 +42,7 @@ export default async function ProjectPage({ params }: { params: { id: string } }
         )}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <ProjectSection 
           title="Tasks" 
           count={project.tasks?.length || 0}
@@ -53,9 +54,14 @@ export default async function ProjectPage({ params }: { params: { id: string } }
           link={`/projects/${project.id}/plans`}
         />
         <ProjectSection 
-          title="Schedule" 
-          count={project.events?.length || 0}
-          link={`/projects/${project.id}/schedule`}
+          title="Bids" 
+          count={project.bids?.length || 0}
+          link={`/projects/${project.id}/bids`}
+        />
+        <ProjectSection 
+          title="Takeoff" 
+          count={project.plans?.length || 0}
+          link={`/projects/${project.id}/takeoff`}
         />
       </div>
     </div>

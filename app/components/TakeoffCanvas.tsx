@@ -69,6 +69,7 @@ export default function TakeoffCanvas({
 
   // --- LINE MODE ---
   const handleMouseDown = (e: any) => {
+    console.log('Mouse down, mode:', mode); // Debug log
     if (mode === "line") {
       isDrawing.current = true;
       const pos = e.target.getStage().getPointerPosition();
@@ -77,16 +78,20 @@ export default function TakeoffCanvas({
       }
     }
     if (mode === "area") {
+      console.log('Area mode mouse down'); // Debug log
       const pos = e.target.getStage().getPointerPosition();
       if (!pos) return;
       if (!isPolygonDrawing) {
+        console.log('Starting new polygon at:', pos.x, pos.y); // Debug log
         setCurrentPolygon([pos.x, pos.y]);
         setIsPolygonDrawing(true);
       } else {
+        console.log('Adding point to polygon:', pos.x, pos.y); // Debug log
         // If user clicks near the first point, close the polygon
         if (currentPolygon.length >= 4) {
           const [fx, fy] = [currentPolygon[0], currentPolygon[1]];
           if (isNearPoint(pos.x, pos.y, fx, fy)) {
+            console.log('Closing polygon'); // Debug log
             if (onAddMeasurement) onAddMeasurement("area", currentPolygon);
             setCurrentPolygon([]);
             setIsPolygonDrawing(false);
@@ -122,7 +127,9 @@ export default function TakeoffCanvas({
 
   // Double click to finish polygon
   const handleDblClick = (e: any) => {
-    if (mode === "area" && isPolygonDrawing && currentPolygon.length >= 6) {
+    console.log('Double click, mode:', mode, 'isPolygonDrawing:', isPolygonDrawing, 'currentPolygon length:', currentPolygon.length); // Debug log
+    if (mode === "area" && isPolygonDrawing && currentPolygon.length >= 4) {
+      console.log('Finishing polygon with double click'); // Debug log
       if (onAddMeasurement) onAddMeasurement("area", currentPolygon);
       setCurrentPolygon([]);
       setIsPolygonDrawing(false);
@@ -139,7 +146,7 @@ export default function TakeoffCanvas({
     measurementX = currentLine[currentLine.length - 2];
     measurementY = currentLine[currentLine.length - 1];
   }
-  if (mode === "area" && currentPolygon.length >= 6) {
+  if (mode === "area" && currentPolygon.length >= 4) {
     const area = getPolygonArea(currentPolygon);
     measurementText = `${area.toFixed(2)} px²`;
     // Place label at centroid (approximate)
@@ -194,19 +201,22 @@ export default function TakeoffCanvas({
           />
         )}
         {/* Draw polygons */}
-        {measurements.filter(m => m.type === "area").map((m, idx) => (
-          <Line
-            key={m.id}
-            points={m.points}
-            stroke={selectedMeasurementId === m.id ? "#f59e42" : "#22C55E"}
-            strokeWidth={selectedMeasurementId === m.id ? 5 : 3}
-            closed
-            fill="#22c55e22"
-            lineCap="round"
-            globalCompositeOperation="source-over"
-            onClick={() => handleShapeClick(m.id)}
-          />
-        ))}
+        {measurements.filter(m => m.type === "area").map((m, idx) => {
+          console.log('Rendering area measurement:', m.id, 'points:', m.points); // Debug log
+          return (
+            <Line
+              key={m.id}
+              points={m.points}
+              stroke={selectedMeasurementId === m.id ? "#f59e42" : "#22C55E"}
+              strokeWidth={selectedMeasurementId === m.id ? 5 : 3}
+              closed
+              fill="#22c55e22"
+              lineCap="round"
+              globalCompositeOperation="source-over"
+              onClick={() => handleShapeClick(m.id)}
+            />
+          );
+        })}
         {currentPolygon.length > 0 && mode === "area" && (
           <Line
             points={currentPolygon}
@@ -215,6 +225,18 @@ export default function TakeoffCanvas({
             dash={[10, 5]}
             lineCap="round"
             globalCompositeOperation="source-over"
+            closed={currentPolygon.length >= 4}
+            fill={currentPolygon.length >= 4 ? "#22c55e22" : "transparent"}
+          />
+        )}
+        {/* Debug info */}
+        {mode === "area" && (
+          <Text
+            x={10}
+            y={30}
+            text={`Area Mode - Points: ${currentPolygon.length / 2}, Drawing: ${isPolygonDrawing}`}
+            fontSize={12}
+            fill="#000"
           />
         )}
         {/* Measurement label */}

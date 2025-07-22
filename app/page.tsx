@@ -5,6 +5,8 @@ import Link from 'next/link'
 import { Session } from 'next-auth'
 import Image from 'next/image'
 
+export const dynamic = 'force-dynamic';
+
 // Define the Project type
 type Project = {
   id: string | number;

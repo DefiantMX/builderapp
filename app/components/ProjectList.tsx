@@ -8,15 +8,14 @@ type Project = {
   id: string
   name: string
   description: string | null
-  createdAt: string
-  updatedAt: string
+  createdAt: Date
+  updatedAt: Date
 }
 
 export default function ProjectList({ projects = [] }: { projects: Project[] }) {
   const [isDeleting, setIsDeleting] = useState<string | null>(null)
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString)
+  const formatDate = (date: Date) => {
     return date.toLocaleDateString("en-US", {
       month: "short",
       day: "numeric",

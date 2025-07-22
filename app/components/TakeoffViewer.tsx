@@ -9,33 +9,15 @@ import { Ruler, Move, Square, Save, Pencil, Trash2 } from "lucide-react"
 import { Button } from '@/components/ui/button'
 import 'react-pdf/dist/esm/Page/AnnotationLayer.css'
 import 'react-pdf/dist/esm/Page/TextLayer.css'
-import { Select } from "@/components/ui/select"
-import { Label } from "@/components/ui/label"
-import { Input } from "@/components/ui/input"
+
 import type { Plan } from "@prisma/client"
 
-// Initialize PDF.js worker
+// Initialize PDF.js worker - simplified approach
 if (typeof window !== 'undefined') {
-  // Try to disable worker for testing
   try {
-    // Option 1: Try using a local worker
-    pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js';
+    pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
   } catch (error) {
-    console.error('Failed to set local PDF worker:', error);
-    try {
-      // Option 2: Try jsdelivr CDN
-      pdfjs.GlobalWorkerOptions.workerSrc = `//cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`;
-    } catch (fallbackError) {
-      console.error('Failed to set PDF worker with jsdelivr:', fallbackError);
-      try {
-        // Option 3: Try unpkg
-        pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`;
-      } catch (finalError) {
-        console.error('Failed to set PDF worker with unpkg:', finalError);
-        // Option 4: Final fallback to original CDN
-        pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
-      }
-    }
+    console.error('Failed to set PDF worker:', error);
   }
 }
 
@@ -45,8 +27,8 @@ type Point = {
 }
 
 type Measurement = {
-  id: number
-  planId: number
+  id: string
+  planId: string
   type: "length" | "area"
   label: string
   value: number
@@ -60,902 +42,740 @@ type TakeoffViewerProps = {
   plan: Plan
   measurements: Measurement[]
   onMeasurementSave: (measurement: Omit<Measurement, "id">) => void
-  onMeasurementUpdate?: (id: number, updates: Partial<Measurement>) => void
-  onMeasurementDelete?: (id: number) => void
+  onMeasurementUpdate?: (id: string, updates: Partial<Measurement>) => void
+  onMeasurementDelete?: (id: string) => void
 }
 
-const SCALE_FACTOR = 0.0254 // 1 pixel = 0.0254 meters (approximate)
-
-// Add scale options
-const SCALE_OPTIONS = [
-  { label: "1/4\" = 1'-0\"", value: 48 },    // 1:48
-  { label: "1/8\" = 1'-0\"", value: 96 },    // 1:96
-  { label: "3/16\" = 1'-0\"", value: 64 },   // 1:64
-  { label: "3/32\" = 1'-0\"", value: 128 },  // 1:128
-  { label: "1/16\" = 1'-0\"", value: 192 },  // 1:192
-  { label: "1/32\" = 1'-0\"", value: 384 },  // 1:384
-  { label: "1\" = 1'-0\"", value: 12 },      // 1:12
-  { label: "1/2\" = 1'-0\"", value: 24 },    // 1:24
-];
-
-// Add material options
-const MATERIAL_OPTIONS = [
-  { label: "Siding", value: "siding", defaultPrice: 8.50 },
-  { label: "Concrete", value: "concrete", defaultPrice: 12.00 },
-  { label: "Roofing", value: "roofing", defaultPrice: 5.75 },
-  { label: "Flooring", value: "flooring", defaultPrice: 3.50 },
-  { label: "Drywall", value: "drywall", defaultPrice: 2.25 },
-  { label: "Insulation", value: "insulation", defaultPrice: 1.75 },
-  { label: "Paint", value: "paint", defaultPrice: 2.00 },
-  { label: "Tile", value: "tile", defaultPrice: 4.50 },
-  { label: "Carpet", value: "carpet", defaultPrice: 3.00 },
-  { label: "Custom", value: "custom", defaultPrice: 0 }
-];
-
 export default function TakeoffViewer({ plan, measurements, onMeasurementSave, onMeasurementUpdate, onMeasurementDelete }: TakeoffViewerProps) {
-  const [numPages, setNumPages] = useState<number | null>(null)
-  const [pageNumber, setPageNumber] = useState(1)
-  const [scale, setScale] = useState(1.0)
-  const [measuring, setMeasuring] = useState(false)
-  const [measurementType, setMeasurementType] = useState<'length' | 'area'>('length')
-  const [points, setPoints] = useState<Point[]>([])
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const [pdfData, setPdfData] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [measurementLabel, setMeasurementLabel] = useState("")
-  const [showLabelInput, setShowLabelInput] = useState(false)
-  const [pageDimensions, setPageDimensions] = useState<{ width: number; height: number } | null>(null)
-  const containerRef = useRef<HTMLDivElement>(null)
-  const [isFinishingArea, setIsFinishingArea] = useState(false)
-  const [archScale, setArchScale] = useState<number>(48) // Default to 1/4" = 1'-0"
-  const [selectedMaterial, setSelectedMaterial] = useState<string>("")
-  const [pricePerUnit, setPricePerUnit] = useState<number>(0)
-  const [showPricingInput, setShowPricingInput] = useState(false)
-  const [selectedMeasurement, setSelectedMeasurement] = useState<Measurement | null>(null)
-  const [editingMaterial, setEditingMaterial] = useState<string>("")
-  const [editingPrice, setEditingPrice] = useState<number>(0)
-  const [editingPoints, setEditingPoints] = useState<boolean>(false)
-  const [selectedPointIndex, setSelectedPointIndex] = useState<number>(-1)
+  // --- State Management ---
+  const [numPages, setNumPages] = useState<number | null>(null);
+  const [pageNumber, setPageNumber] = useState(1);
+  const [scale, setScale] = useState(1.0);
+  const [pageDimensions, setPageDimensions] = useState<{ width: number; height: number } | null>(null);
+  const [pdfData, setPdfData] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [pdfLoaded, setPdfLoaded] = useState(false);
 
+  // Measurement State
+  const [measuring, setMeasuring] = useState(false);
+  const [measurementType, setMeasurementType] = useState<'length' | 'area'>('length');
+  const [points, setPoints] = useState<Point[]>([]);
+  const [currentPos, setCurrentPos] = useState<Point | null>(null);
+
+  // Editing State
+  const [selectedMeasurement, setSelectedMeasurement] = useState<Measurement | null>(null);
+  const [editingPoints, setEditingPoints] = useState<boolean>(false);
+  const [selectedPointIndex, setSelectedPointIndex] = useState<number>(-1);
+
+  // Calibration State
+  const [calibrating, setCalibrating] = useState(false);
+  const [calibrationPoints, setCalibrationPoints] = useState<Point[]>([]);
+  const [calibrationPixelLength, setCalibrationPixelLength] = useState<number | null>(null);
+  const [calibrationInput, setCalibrationInput] = useState<string>("");
+  const [calibrationUnit, setCalibrationUnit] = useState<'ft' | 'm' | 'in'>("ft");
+  const [pixelToUnit, setPixelToUnit] = useState<number>(1); // real-world units per pixel
+  const [calibrationModal, setCalibrationModal] = useState(false);
+
+  // UI State
+  const [sidebarVisible, setSidebarVisible] = useState<boolean>(true);
+  const [displayUnit, setDisplayUnit] = useState<'px' | 'ft' | 'in'>('px');
+
+  // Refs
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const pdfContainerRef = useRef<HTMLDivElement>(null);
+
+  // --- PDF Loading ---
   useEffect(() => {
+    let isMounted = true;
+    let objectUrl: string | null = null;
+    
     const fetchPdf = async () => {
+      if (!isMounted) return;
+      
       try {
-        setLoading(true)
+        setLoading(true);
+        setError(null);
+        
         console.log('Fetching PDF from:', plan.fileUrl);
+        const response = await fetch(plan.fileUrl);
+        if (!response.ok) throw new Error(`Failed to fetch PDF: ${response.statusText}`);
         
-        // Test if the URL is accessible
-        const testResponse = await fetch(plan.fileUrl, { method: 'HEAD' });
-        console.log('PDF URL test response:', testResponse.status, testResponse.statusText);
+        const blob = await response.blob();
+        if (blob.size === 0) throw new Error('PDF blob is empty');
         
-        const response = await fetch(plan.fileUrl)
-        console.log('PDF fetch response status:', response.status);
-        if (!response.ok) {
-          throw new Error(`Failed to fetch PDF: ${response.status} ${response.statusText}`)
+        console.log('PDF blob size:', blob.size);
+        // Create a new Blob URL
+        objectUrl = URL.createObjectURL(blob);
+        
+        if (isMounted) {
+          console.log('Setting PDF data URL');
+          setPdfData(objectUrl);
+          setError(null);
+          setPdfLoaded(true);
         }
-        const blob = await response.blob()
-        console.log('PDF blob size:', blob.size, 'bytes');
-        if (blob.size === 0) {
-          throw new Error('PDF blob is empty (0 bytes)');
-        }
-        const dataUrl = URL.createObjectURL(blob)
-        console.log('PDF data URL created:', dataUrl.substring(0, 50) + '...');
-        setPdfData(dataUrl)
-        setError(null)
       } catch (err) {
-        console.error("Error loading PDF:", err)
-        setError(`Error loading PDF: ${err instanceof Error ? err.message : 'Unknown error'}`)
+        console.error('Error fetching PDF:', err);
+        if (isMounted) {
+          setError(err instanceof Error ? err.message : 'Failed to load PDF');
+        }
       } finally {
-        setLoading(false)
+        if (isMounted) {
+          setLoading(false);
+        }
       }
-    }
+    };
 
-    fetchPdf()
+    fetchPdf();
+    
     return () => {
-      if (pdfData) {
-        URL.revokeObjectURL(pdfData)
+      isMounted = false;
+      // Clean up the object URL when component unmounts or URL changes
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
       }
-    }
-  }, [plan.fileUrl])
+    };
+  }, [plan.fileUrl]);
 
+  // --- Helper Functions ---
+  const getMousePos = useCallback((e: React.MouseEvent<HTMLCanvasElement>): Point | null => {
+    const canvas = canvasRef.current;
+    if (!canvas) {
+      console.log('Canvas not available for mouse position');
+      return null;
+    }
+    const rect = canvas.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / scale;
+    const y = (e.clientY - rect.top) / scale;
+    console.log('Mouse position calculated:', { clientX: e.clientX, clientY: e.clientY, rectLeft: rect.left, rectTop: rect.top, scale, x, y });
+    return { x, y };
+  }, [scale]);
+
+
+
+  // --- Drawing Functions ---
+
+  const convertToDisplayUnit = useCallback((value: number, type: 'length' | 'area') => {
+    if (pixelToUnit === 1) { // Not calibrated
+        return { value, unit: type === 'length' ? 'px' : 'px²' };
+    }
+    const valueInFt = type === 'length' ? value * pixelToUnit : value * pixelToUnit * pixelToUnit;
+
+    switch (displayUnit) {
+        case 'ft':
+            return { value: valueInFt, unit: type === 'length' ? 'ft' : 'sq ft' };
+        case 'in':
+            const valueInIn = type === 'length' ? valueInFt * 12 : valueInFt * 144;
+            return { value: valueInIn, unit: type === 'length' ? 'in' : 'sq in' };
+        default:
+            return { value, unit: type === 'length' ? 'px' : 'px²' };
+    }
+  }, [pixelToUnit, displayUnit]);
+
+  // --- Single Drawing Effect ---
   useEffect(() => {
-    const canvas = canvasRef.current
-    if (canvas) {
-      const context = canvas.getContext("2d")
-      if (context) {
-        context.clearRect(0, 0, canvas.width, canvas.height)
-        drawMeasurements(context)
-        drawCurrentMeasurement(context)
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (ctx && canvas) {
+      console.log('Drawing measurements:', { measurements: measurements.length, points: points.length, currentPos: !!currentPos });
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      // Draw existing measurements
+      measurements.forEach(m => {
+        if (!m.points || m.points.length === 0) return;
+        
+        ctx.save();
+        ctx.strokeStyle = m.id === selectedMeasurement?.id ? '#ef4444' : (m.type === 'length' ? '#3b82f6' : '#22c55e');
+        ctx.lineWidth = m.id === selectedMeasurement?.id ? 4 : 3;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        
+        // Draw the main path
+        m.points.forEach((p, i) => {
+          const x = p.x * scale;
+          const y = p.y * scale;
+          if (i === 0) {
+            ctx.moveTo(x, y);
+          } else {
+            ctx.lineTo(x, y);
+          }
+        });
+        
+        // Close path for area measurements
+        if (m.type === 'area' && m.points.length > 2) {
+          ctx.closePath();
+        }
+        
+        ctx.stroke();
+        
+        // Draw points for selected measurement
+        if (m.id === selectedMeasurement?.id) {
+          ctx.fillStyle = '#ef4444';
+          m.points.forEach(p => {
+            ctx.beginPath();
+            ctx.arc(p.x * scale, p.y * scale, 5, 0, Math.PI * 2);
+            ctx.fill();
+          });
+        }
+        ctx.restore();
+      });
+      
+      // Draw current measurement
+      if (measuring && points.length > 0) {
+        ctx.save();
+        ctx.strokeStyle = '#f97316';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 5]);
+        ctx.beginPath();
+        points.forEach((p, i) => i === 0 ? ctx.moveTo(p.x * scale, p.y * scale) : ctx.lineTo(p.x * scale, p.y * scale));
+        if (currentPos) ctx.lineTo(currentPos.x * scale, currentPos.y * scale);
+        ctx.stroke();
+
+        // Draw length/area text during measurement
+        if (points.length > 0 && currentPos) {
+          ctx.font = `bold 14px Arial`;
+          ctx.fillStyle = '#f97316';
+          
+          if (measurementType === 'length' && points.length === 1) {
+            const length = Math.sqrt(
+              Math.pow(currentPos.x - points[0].x, 2) + 
+              Math.pow(currentPos.y - points[0].y, 2)
+            );
+            // Inline convertToDisplayUnit logic
+            let displayValue = length;
+            let displayUnit = 'px';
+            if (pixelToUnit !== 1) {
+              const valueInFt = length * pixelToUnit;
+              if (displayUnit === 'ft') {
+                displayValue = valueInFt;
+                displayUnit = 'ft';
+              } else if (displayUnit === 'in') {
+                displayValue = valueInFt * 12;
+                displayUnit = 'in';
+              }
+            }
+            const midX = (points[0].x + currentPos.x) / 2 * scale;
+            const midY = (points[0].y + currentPos.y) / 2 * scale;
+            ctx.fillText(`${displayValue.toFixed(2)} ${displayUnit}`, midX + 10, midY - 10);
+          } else if (measurementType === 'area' && points.length >= 2) {
+            const tempPoints = [...points, currentPos];
+            // Inline calculatePolygonArea logic
+            let area = 0;
+            if (tempPoints.length >= 3) {
+              for (let i = 0; i < tempPoints.length; i++) {
+                const j = (i + 1) % tempPoints.length;
+                area += tempPoints[i].x * tempPoints[j].y;
+                area -= tempPoints[j].x * tempPoints[i].y;
+              }
+              area = Math.abs(area / 2);
+            }
+            // Inline convertToDisplayUnit logic for area
+            let displayValue = area;
+            let displayUnit = 'px²';
+            if (pixelToUnit !== 1) {
+              const valueInFt = area * pixelToUnit * pixelToUnit;
+              if (displayUnit === 'ft') {
+                displayValue = valueInFt;
+                displayUnit = 'sq ft';
+              } else if (displayUnit === 'in') {
+                displayValue = valueInFt * 144;
+                displayUnit = 'sq in';
+              }
+            }
+            const centerX = tempPoints.reduce((sum, p) => sum + p.x, 0) / tempPoints.length * scale;
+            const centerY = tempPoints.reduce((sum, p) => sum + p.y, 0) / tempPoints.length * scale;
+            ctx.fillText(`${displayValue.toFixed(2)} ${displayUnit}`, centerX, centerY);
+          }
+        }
+        ctx.restore();
       }
-    }
-  }, [measurements, points, scale])
+      
+      // Draw calibration line
+      if (calibrating && calibrationPoints.length > 0) {
+        ctx.save();
+        ctx.strokeStyle = '#f59e0b';
+        ctx.lineWidth = 3;
+        ctx.setLineDash([6, 4]);
+        ctx.beginPath();
+        ctx.moveTo(calibrationPoints[0].x * scale, calibrationPoints[0].y * scale);
+        if (calibrationPoints.length === 2) {
+            ctx.lineTo(calibrationPoints[1].x * scale, calibrationPoints[1].y * scale);
+        } else if (currentPos) {
+            ctx.lineTo(currentPos.x * scale, currentPos.y * scale);
+        }
+        ctx.stroke();
 
-  // Function to convert pixels to feet based on architectural scale
-  const pixelsToFeet = (pixels: number) => {
-    return (pixels / (72 * scale)) * (archScale / 12);
+        if (calibrationPoints.length === 2 && calibrationPixelLength) {
+            const midX = (calibrationPoints[0].x + calibrationPoints[1].x) / 2 * scale;
+            const midY = (calibrationPoints[0].y + calibrationPoints[1].y) / 2 * scale;
+            ctx.font = 'bold 14px Arial';
+            ctx.fillStyle = '#f59e0b';
+            const label = `${calibrationPixelLength.toFixed(2)} px`;
+            ctx.fillText(label, midX + 10, midY - 10);
+        }
+        ctx.restore();
+      }
+    } else {
+      console.log('Canvas or context not available:', { canvas: !!canvas, ctx: !!ctx });
+    }
+  }, [measurements, points, currentPos, measuring, measurementType, calibrating, calibrationPoints, calibrationPixelLength, selectedMeasurement, scale, pixelToUnit, displayUnit]);
+
+  // --- Event Handlers ---
+  const handleCanvasClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    console.log('Canvas click:', { measuring, editingPoints, points, measurementType });
+    if (editingPoints) return;
+    if (!measuring) return;
+
+    const pos = getMousePos(e);
+    if (!pos) return;
+
+    console.log('Mouse position:', pos);
+    const newPoints = [...points, pos];
+    setPoints(newPoints);
+
+    if (measurementType === 'length' && newPoints.length === 2) {
+      const [start, end] = newPoints;
+      const length = Math.sqrt(Math.pow(end.x - start.x, 2) + Math.pow(end.y - start.y, 2));
+      const newMeasurement = {
+        planId: plan.id,
+        type: 'length' as const,
+        label: `Length ${measurements.length + 1}`,
+        value: length,
+        unit: 'px',
+        points: newPoints,
+      };
+      console.log('Saving length measurement:', newMeasurement);
+      onMeasurementSave(newMeasurement);
+      setPoints([]);
+      setMeasuring(false);
+    }
+  }, [measuring, editingPoints, getMousePos, points, measurementType, plan.id, measurements.length, onMeasurementSave]);
+
+  const handleCanvasMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (editingPoints && selectedPointIndex !== -1) {
+        const pos = getMousePos(e);
+        if (!pos || !selectedMeasurement || !onMeasurementUpdate) return;
+
+        const updatedPoints = [...selectedMeasurement.points];
+        updatedPoints[selectedPointIndex] = pos;
+
+        let newValue = selectedMeasurement.value;
+        if (selectedMeasurement.type === 'length') {
+            const [start, end] = updatedPoints;
+            newValue = Math.sqrt(Math.pow(end.x - start.x, 2) + Math.pow(end.y - start.y, 2));
+        } else if (selectedMeasurement.type === 'area') {
+            // Inline calculatePolygonArea logic
+            if (updatedPoints.length >= 3) {
+              let area = 0;
+              for (let i = 0; i < updatedPoints.length; i++) {
+                const j = (i + 1) % updatedPoints.length;
+                area += updatedPoints[i].x * updatedPoints[j].y;
+                area -= updatedPoints[j].x * updatedPoints[i].y;
+              }
+              newValue = Math.abs(area / 2);
+            }
+        }
+        onMeasurementUpdate(selectedMeasurement.id, { points: updatedPoints, value: newValue });
+
+    } else if (measuring || calibrating) {
+      setCurrentPos(getMousePos(e));
+    }
+  }, [editingPoints, selectedPointIndex, selectedMeasurement, measuring, getMousePos, onMeasurementUpdate]);
+
+  const handleCanvasMouseUp = useCallback(() => {
+    if (editingPoints) {
+      setSelectedPointIndex(-1);
+    }
+  }, [editingPoints]);
+
+  const handlePointSelect = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!editingPoints || !selectedMeasurement) return;
+    const pos = getMousePos(e);
+    if (!pos) return;
+    const pointIndex = selectedMeasurement.points.findIndex(p => Math.sqrt(Math.pow(p.x - pos.x, 2) + Math.pow(p.y - pos.y, 2)) < (6 / scale));
+    if (pointIndex !== -1) {
+        setSelectedPointIndex(pointIndex);
+    }
   };
 
-  // Function to convert square pixels to square feet
-  const squarePixelsToSquareFeet = (squarePixels: number) => {
-    const scaleFactor = archScale / 12;
-    return (squarePixels / (72 * 72 * scale * scale)) * (scaleFactor * scaleFactor);
+  const handleCalibrationSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!calibrationPixelLength || !calibrationInput) return;
+    const realWorldLength = parseFloat(calibrationInput);
+    if (isNaN(realWorldLength) || realWorldLength <= 0) return;
+    setPixelToUnit(realWorldLength / calibrationPixelLength);
+    setCalibrationModal(false);
+    setCalibrating(false);
+    setCalibrationPoints([]);
+    setCalibrationInput("");
   };
 
-  function calculatePolygonArea(points: Point[]): number {
-    let area = 0;
-    for (let i = 0; i < points.length; i++) {
-      const j = (i + 1) % points.length;
-      // Account for scale in the area calculation
-      area += (points[i].x) * (points[j].y);
-      area -= (points[j].x) * (points[i].y);
+  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    console.log('Mouse down event captured:', { 
+      calibrating, 
+      editingPoints, 
+      measuring, 
+      measurementType,
+      clientX: e.clientX,
+      clientY: e.clientY,
+      target: e.target
+    });
+    
+    if (calibrating) {
+        const pos = getMousePos(e);
+        if (!pos) return;
+        const newCalPoints = [...calibrationPoints, pos];
+        if (newCalPoints.length <= 2) {
+            setCalibrationPoints(newCalPoints);
+            if (newCalPoints.length === 2) {
+                const [start, end] = newCalPoints;
+                const dist = Math.sqrt(Math.pow(end.x - start.x, 2) + Math.pow(end.y - start.y, 2));
+                setCalibrationPixelLength(dist);
+                setCalibrationModal(true); // Show modal when calibration points are set
+            }
+        }
+    } else if (editingPoints) {
+        handlePointSelect(e);
+    } else {
+        handleCanvasClick(e);
     }
-    return Math.abs(area / 2);
   }
 
-  // Updated finishAreaMeasurement function
-  const finishAreaMeasurement = useCallback(() => {
-    if (points.length < 3) return;
-    
-    const allPoints = [...points, points[0]]; // Close the polygon
-    const area = calculatePolygonArea(allPoints);
-    const sqFeet = squarePixelsToSquareFeet(area);
-    
-    const newMeasurement = {
-      planId: plan.id,
-      type: 'area' as const,
-      label: `Area ${measurements.length + 1}`,
-      value: sqFeet,
-      unit: 'sq ft',
-      points: allPoints.map(p => ({ x: p.x, y: p.y })), // Store unscaled coordinates
-      materialType: selectedMaterial,
-      pricePerUnit: pricePerUnit || MATERIAL_OPTIONS.find(opt => opt.value === selectedMaterial)?.defaultPrice || 0
-    };
-
-    onMeasurementSave(newMeasurement);
-
-    // Reset the measurement state
-    setPoints([]);
-    setMeasuring(false);
-    setIsFinishingArea(false);
-    setSelectedMaterial("");
-    setPricePerUnit(0);
-    setShowPricingInput(false);
-  }, [points, plan.id, measurements.length, onMeasurementSave, selectedMaterial, pricePerUnit, scale, archScale]);
-
-  // Updated keyboard event handler
+  // Keyboard handler
   useEffect(() => {
-    const handleKeyPress = (e: KeyboardEvent) => {
-      console.log('Key pressed:', e.key); // Debug log
-      console.log('Current state:', { measuring, measurementType, pointsLength: points.length }); // Debug log
-      
-      if (e.key === 'Enter' && measuring && measurementType === 'area' && points.length >= 3) {
-        e.preventDefault(); // Prevent form submission if any
-        console.log('Attempting to save area measurement...'); // Debug log
-        finishAreaMeasurement();
-      } else if (e.key === 'Escape') {
-        // Cancel measurement
-        setPoints([]);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
         setMeasuring(false);
-        setIsFinishingArea(false);
+        setEditingPoints(false);
+        setPoints([]);
+        setSelectedMeasurement(null);
+        setCalibrating(false);
+        setCalibrationPoints([]);
       }
-    };
-
-    window.addEventListener('keydown', handleKeyPress);
-    return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [measuring, measurementType, points, finishAreaMeasurement]);
-
-  function onDocumentLoadSuccess({ numPages }: { numPages: number }) {
-    console.log('Document loaded successfully with', numPages, 'pages');
-    setNumPages(numPages)
-    setPageNumber(1)
-  }
-
-  function onPageLoadSuccess({ width, height }: { width: number; height: number }) {
-    // Defensive: log and fallback for invalid width/height/scale
-    console.log('onPageLoadSuccess width:', width, 'height:', height, 'scale:', scale);
-    let safeWidth = (typeof width === 'number' && width > 0 && isFinite(width)) ? width : 800;
-    let safeHeight = (typeof height === 'number' && height > 0 && isFinite(height)) ? height : 600;
-    let safeScale = (typeof scale === 'number' && scale > 0 && isFinite(scale)) ? scale : 1;
-    console.log('Using safe dimensions:', { safeWidth, safeHeight, safeScale });
-    setPageDimensions({ width: safeWidth, height: safeHeight });
-    // Update canvas dimensions
-    if (canvasRef.current) {
-      canvasRef.current.width = safeWidth * safeScale;
-      canvasRef.current.height = safeHeight * safeScale;
-      console.log('Canvas dimensions set to:', canvasRef.current.width, 'x', canvasRef.current.height);
-      const context = canvasRef.current.getContext("2d");
-      if (context) {
-        context.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
-        drawMeasurements(context);
-        drawCurrentMeasurement(context);
-      }
-    }
-  }
-
-  function handleCanvasClick(e: React.MouseEvent<HTMLCanvasElement>) {
-    if (!measuring || !canvasRef.current || !pageDimensions) return
-
-    const canvas = canvasRef.current
-    const rect = canvas.getBoundingClientRect()
-    
-    // Calculate the scale factor between canvas display size and actual size
-    const scaleFactorX = canvas.width / rect.width
-    const scaleFactorY = canvas.height / rect.height
-
-    // Get click coordinates relative to canvas display size
-    const displayX = e.clientX - rect.left
-    const displayY = e.clientY - rect.top
-
-    // Convert to actual canvas coordinates, accounting for zoom scale
-    const x = (displayX * scaleFactorX) / scale
-    const y = (displayY * scaleFactorY) / scale
-
-    if (measurementType === 'length') {
-      setPoints([...points, { x, y }])
-      
-      if (points.length === 1) {
-        // Calculate length measurement
-        const dx = x - points[0].x
-        const dy = y - points[0].y
-        const pixelLength = Math.sqrt(dx * dx + dy * dy)
-        const feet = pixelsToFeet(pixelLength);
-
+      if (e.key === 'Enter' && measurementType === 'area' && points.length >= 3) {
+        // Inline calculatePolygonArea logic
+        let area = 0;
+        if (points.length >= 3) {
+          for (let i = 0; i < points.length; i++) {
+            const j = (i + 1) % points.length;
+            area += points[i].x * points[j].y;
+            area -= points[j].x * points[i].y;
+          }
+          area = Math.abs(area / 2);
+        }
         const newMeasurement = {
           planId: plan.id,
-          type: 'length' as const,
-          label: `Length ${measurements.length + 1}`,
-          value: feet,
-          unit: 'ft',
-          points: [...points, { x, y }],
+          type: 'area' as const,
+          label: `Area ${measurements.length + 1}`,
+          value: area,
+          unit: 'px',
+          points: points,
         };
-
         onMeasurementSave(newMeasurement);
         setPoints([]);
         setMeasuring(false);
       }
-    } else if (measurementType === 'area') {
-      setPoints([...points, { x, y }])
-      if (points.length >= 2) {
-        setIsFinishingArea(true)
-      }
-    }
-  }
-
-  // Function to calculate the center point of a set of points
-  function getCenterPoint(points: Point[]): Point {
-    if (points.length === 0) return { x: 0, y: 0 };
-    
-    const sum = points.reduce((acc, point) => ({
-      x: acc.x + point.x,
-      y: acc.y + point.y
-    }), { x: 0, y: 0 });
-    
-    return {
-      x: sum.x / points.length,
-      y: sum.y / points.length
     };
-  }
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [points, measurementType, onMeasurementSave, plan.id, measurements.length]);
 
-  // Updated drawMeasurements function to ensure measurements are visible
-  function drawMeasurements(context: CanvasRenderingContext2D) {
-    context.save();
-    context.font = 'bold 14px Arial';
-    context.lineWidth = 2;
-
-    measurements.forEach((measurement) => {
-      context.beginPath();
-      context.strokeStyle = '#2563eb'; // blue-600
-      context.fillStyle = '#2563eb';
-
-      measurement.points.forEach((point, index) => {
-        if (index === 0) {
-          context.moveTo(point.x * scale, point.y * scale);
-        } else {
-          context.lineTo(point.x * scale, point.y * scale);
-        }
-      });
-
-      if (measurement.type === 'area') {
-        context.closePath();
-        context.stroke();
-
-        // Calculate center point for label
-        const center = getCenterPoint(measurement.points);
-        
-        // Draw measurement value
-        const measurementLabel = `${measurement.value.toFixed(2)} ${measurement.unit}`;
-        context.font = 'bold 14px Arial';
-        const metrics = context.measureText(measurementLabel);
-        
-        // Background for measurement value
-        context.fillStyle = 'white';
-        context.fillRect(
-          center.x * scale - metrics.width/2 - 4,
-          center.y * scale - 28,
-          metrics.width + 8,
-          20
-        );
-        
-        // Draw measurement value
-        context.fillStyle = '#2563eb';
-        context.textAlign = 'center';
-        context.textBaseline = 'middle';
-        context.fillText(measurementLabel, center.x * scale, center.y * scale - 18);
-
-        // If material type and price exist, draw them
-        if (measurement.materialType && measurement.pricePerUnit) {
-          const materialLabel = `${measurement.materialType} - $${measurement.pricePerUnit.toFixed(2)}/sq ft`;
-          const totalPrice = measurement.value * measurement.pricePerUnit;
-          const priceLabel = `Total: $${totalPrice.toFixed(2)}`;
-          
-          context.font = '12px Arial';
-          const materialMetrics = context.measureText(materialLabel);
-          const priceMetrics = context.measureText(priceLabel);
-          
-          // Background for material and price
-          context.fillStyle = 'white';
-          context.fillRect(
-            center.x * scale - Math.max(materialMetrics.width, priceMetrics.width)/2 - 4,
-            center.y * scale - 4,
-            Math.max(materialMetrics.width, priceMetrics.width) + 8,
-            36
-          );
-          
-          // Draw material type and price
-          context.fillStyle = '#2563eb';
-          context.fillText(materialLabel, center.x * scale, center.y * scale + 8);
-          context.fillText(priceLabel, center.x * scale, center.y * scale + 24);
-        }
-      } else {
-        // Length measurement
-        context.stroke();
-        
-        // Calculate midpoint for label
-        const start = measurement.points[0];
-        const end = measurement.points[1];
-        const midX = (start.x + end.x) / 2;
-        const midY = (start.y + end.y) / 2;
-        
-        const label = `${measurement.value.toFixed(2)} ${measurement.unit}`;
-        context.font = 'bold 14px Arial';
-        const metrics = context.measureText(label);
-        
-        // Background for label
-        context.fillStyle = 'white';
-        context.fillRect(
-          midX * scale - metrics.width/2 - 4,
-          midY * scale - 10,
-          metrics.width + 8,
-          20
-        );
-        
-        // Draw measurement text
-        context.fillStyle = '#2563eb';
-        context.textAlign = 'center';
-        context.textBaseline = 'middle';
-        context.fillText(label, midX * scale, midY * scale);
-      }
-    });
-
-    context.restore();
-  }
-
-  function drawCurrentMeasurement(context: CanvasRenderingContext2D) {
-    if (points.length === 0) return;
-
-    context.setLineDash([5, 5]);
-    context.beginPath();
-    context.moveTo(points[0].x * scale, points[0].y * scale);
-    points.forEach((point) => {
-      context.lineTo(point.x * scale, point.y * scale);
-    });
-
-    if (measurementType === "area" && points.length >= 3) {
-      context.lineTo(points[0].x * scale, points[0].y * scale);
-      context.closePath();
-      context.fillStyle = "rgba(239, 68, 68, 0.1)";
-      context.fill();
-    }
-
-    context.strokeStyle = "#ef4444";
-    context.lineWidth = 2;
-    context.stroke();
-
-    // Draw points
-    points.forEach((point) => {
-      context.beginPath();
-      context.arc(point.x * scale, point.y * scale, 4, 0, 2 * Math.PI);
-      context.fillStyle = "#ef4444";
-      context.fill();
-    });
-
-    // Draw current measurement value
-    if (points.length >= 2) {
-      let value: number;
-      let unit: string;
-
-      if (measurementType === "length") {
-        const dx = points[points.length - 1].x - points[0].x;
-        const dy = points[points.length - 1].y - points[0].y;
-        const pixelLength = Math.sqrt(dx * dx + dy * dy);
-        value = pixelsToFeet(pixelLength);
-        unit = "ft";
-      } else {
-        const tempPoints = points.length >= 3 ? [...points, points[0]] : points;
-        const area = calculatePolygonArea(tempPoints);
-        value = squarePixelsToSquareFeet(area);
-        unit = "sq ft";
-      }
-
-      const centerX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
-      const centerY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
-      
-      const label = `${value.toFixed(2)} ${unit}`;
-      context.font = "bold 14px Inter";
-      const metrics = context.measureText(label);
-      const padding = 4;
-
-      context.fillStyle = "white";
-      context.fillRect(
-        centerX * scale + 5,
-        centerY * scale + 5 - 14,
-        metrics.width + padding * 2,
-        22
-      );
-      
-      context.fillStyle = "#ef4444";
-      context.fillText(
-        label,
-        centerX * scale + 5 + padding,
-        centerY * scale + 5
-      );
-    }
-  }
-
-  // Add function to handle measurement selection
-  const handleMeasurementSelect = (measurement: Measurement) => {
-    setSelectedMeasurement(measurement);
-    setEditingMaterial(measurement.materialType || "");
-    setEditingPrice(measurement.pricePerUnit || 0);
-    setEditingPoints(false);
-    setSelectedPointIndex(-1);
+  // --- Component Lifecycle Handlers ---
+  const onDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
+    console.log('PDF document loaded with', numPages, 'pages');
+    setNumPages(numPages);
   };
 
-  // Add function to handle measurement update
-  const handleMeasurementUpdate = () => {
-    if (!selectedMeasurement || !onMeasurementUpdate) return;
-    
-    onMeasurementUpdate(selectedMeasurement.id, {
-      materialType: editingMaterial,
-      pricePerUnit: editingPrice
-    });
-    
-    setSelectedMeasurement(null);
-    setEditingMaterial("");
-    setEditingPrice(0);
-  };
-
-  // Add function to handle point dragging
-  const handlePointDrag = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!editingPoints || !selectedMeasurement || selectedPointIndex === -1 || !canvasRef.current) return;
-
+  const onPageLoadSuccess = ({ width, height }: { width: number; height: number }) => {
+    console.log('PDF page loaded:', { width, height });
     const canvas = canvasRef.current;
-    const rect = canvas.getBoundingClientRect();
-    const scaleFactorX = canvas.width / rect.width;
-    const scaleFactorY = canvas.height / rect.height;
-
-    const x = (e.clientX - rect.left) * scaleFactorX / scale;
-    const y = (e.clientY - rect.top) * scaleFactorY / scale;
-
-    const updatedPoints = [...selectedMeasurement.points];
-    updatedPoints[selectedPointIndex] = { x, y };
-
-    if (selectedMeasurement.type === 'area' && 
-        selectedPointIndex === 0 && 
-        updatedPoints[updatedPoints.length - 1].x === selectedMeasurement.points[0].x) {
-      updatedPoints[updatedPoints.length - 1] = { x, y };
-    }
-
-    let newValue: number;
-    if (selectedMeasurement.type === 'length') {
-      const dx = updatedPoints[1].x - updatedPoints[0].x;
-      const dy = updatedPoints[1].y - updatedPoints[0].y;
-      const pixelLength = Math.sqrt(dx * dx + dy * dy);
-      newValue = pixelsToFeet(pixelLength);
+    const container = containerRef.current;
+    console.log('Canvas and container refs:', { canvas: !!canvas, container: !!container });
+    
+    if (canvas && container) {
+      const containerWidth = container.offsetWidth;
+      const newScale = containerWidth / width;
+      console.log('Setting scale:', { containerWidth, width, newScale });
+      
+      // Only update if dimensions actually changed
+      const newDimensions = { width: containerWidth, height: height * newScale };
+      console.log('Setting page dimensions:', newDimensions);
+      setPageDimensions(newDimensions);
+      setScale(newScale);
+      
+      // Set canvas dimensions
+      canvas.width = containerWidth;
+      canvas.height = height * newScale;
+      console.log('Canvas dimensions set:', { width: canvas.width, height: canvas.height });
+      
+      // Force a redraw
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+      
+      // Log canvas position for debugging
+      setTimeout(() => {
+        const rect = canvas.getBoundingClientRect();
+        console.log('Canvas position:', { 
+          left: rect.left, 
+          top: rect.top, 
+          width: rect.width, 
+          height: rect.height,
+          scale: newScale
+        });
+      }, 100);
     } else {
-      const area = calculatePolygonArea(updatedPoints);
-      newValue = squarePixelsToSquareFeet(area);
-    }
-
-    onMeasurementUpdate?.(selectedMeasurement.id, {
-      points: updatedPoints,
-      value: newValue
-    });
-  };
-
-  // Add function to handle point selection
-  const handlePointSelect = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!editingPoints || !selectedMeasurement || !canvasRef.current) return;
-
-    const canvas = canvasRef.current;
-    const rect = canvas.getBoundingClientRect();
-    const scaleFactorX = canvas.width / rect.width;
-    const scaleFactorY = canvas.height / rect.height;
-
-    const x = (e.clientX - rect.left) * scaleFactorX;
-    const y = (e.clientY - rect.top) * scaleFactorY;
-
-    // Find if we clicked near any point
-    const pointIndex = selectedMeasurement.points.findIndex(point => {
-      const dx = point.x - x;
-      const dy = point.y - y;
-      return Math.sqrt(dx * dx + dy * dy) < 10; // 10px radius for selection
-    });
-
-    setSelectedPointIndex(pointIndex);
-  };
-
-  // Update canvas event handlers
-  const handleCanvasMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (editingPoints && selectedPointIndex !== -1) {
-      handlePointDrag(e);
+      console.error('Canvas or container not available:', { canvas: !!canvas, container: !!container });
     }
   };
 
-  const handleCanvasMouseUp = () => {
-    setSelectedPointIndex(-1);
+  const onPageLoadError = (error: Error) => {
+    console.error('PDF page load error:', error);
   };
 
-  // Add function to handle measurement deletion
-  const handleMeasurementDelete = (e: React.MouseEvent, measurementId: number) => {
-    e.stopPropagation(); // Prevent triggering measurement selection
-    console.log('Handling measurement deletion:', measurementId); // Debug log
-    if (onMeasurementDelete) {
-      onMeasurementDelete(measurementId);
-      if (selectedMeasurement?.id === measurementId) {
+  const handleMeasurementDelete = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    if (onMeasurementDelete) onMeasurementDelete(id);
+    if (selectedMeasurement?.id === id) {
         setSelectedMeasurement(null);
-        setEditingMaterial("");
-        setEditingPrice(0);
         setEditingPoints(false);
-      }
     }
-  };
+  }
 
+  // --- Render Logic ---
   if (loading) {
-    return <div className="flex justify-center items-center h-64">Loading PDF...</div>
-  }
-
-  if (error) {
-    return <div className="flex justify-center items-center h-64 text-red-500">{error}</div>
-  }
-
-  if (!pdfData) {
-    return <div className="flex justify-center items-center h-64">No PDF data available</div>
-  }
-
-  // Simple test: render just the PDF without overlays
-  const renderSimplePDF = () => (
-    <div className="border-2 border-red-500 p-4" style={{ width: '100%' }}>
-      <h3 className="text-lg font-bold mb-2">PDF Test (No Overlays)</h3>
-      <div style={{ width: '100%', minHeight: '600px', display: 'flex', justifyContent: 'center' }}>
-        <Document
-          file={pdfData}
-          onLoadSuccess={onDocumentLoadSuccess}
-          loading={<div className="flex justify-center items-center h-64">Loading PDF...</div>}
-          error={<div className="flex justify-center items-center h-64 text-red-500">Error loading PDF. Please try again.</div>}
-        >
-          <Page
-            pageNumber={1}
-            scale={2.0}
-            renderAnnotationLayer={false}
-            renderTextLayer={false}
-            loading={<div className="flex justify-center items-center h-64">Loading page...</div>}
-            onLoadSuccess={onPageLoadSuccess}
-            onLoadError={(error) => {
-              console.error('Page load error:', error);
-            }}
-          />
-        </Document>
+    return (
+      <div className="flex flex-col items-center justify-center h-full bg-gray-50">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mb-4"></div>
+        <p className="text-gray-600">Loading PDF...</p>
       </div>
-    </div>
-  );
-
-  // Uncomment the line below to test simple PDF rendering
-  return renderSimplePDF();
+    );
+  }
+  
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full bg-red-50 p-4">
+        <div className="text-red-500 text-lg font-medium mb-2">Error Loading PDF</div>
+        <div className="text-red-600 text-sm text-center">{error}</div>
+        <Button 
+          variant="outline" 
+          className="mt-4"
+          onClick={() => window.location.reload()}
+        >
+          Retry
+        </Button>
+      </div>
+    );
+  }
+  
+  if (!pdfData || !pdfLoaded) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full bg-gray-50 p-4">
+        <div className="text-gray-500 mb-2">No PDF data available</div>
+        <Button 
+          variant="outline"
+          onClick={() => window.location.reload()}
+        >
+          Reload
+        </Button>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex justify-between items-center p-4 border-b">
-        <div className="space-x-2 flex items-center">
-          <Button
-            variant={measuring && measurementType === 'length' ? 'default' : 'outline'}
-            onClick={() => {
-              setMeasuring(true)
-              setMeasurementType('length')
-              setPoints([])
-              setIsFinishingArea(false)
-            }}
-          >
-            <Ruler className="w-4 h-4 mr-2" />
-            Measure Length
-          </Button>
-          <Button
-            variant={measuring && measurementType === 'area' ? 'default' : 'outline'}
-            onClick={() => {
-              setMeasuring(true)
-              setMeasurementType('area')
-              setPoints([])
-              setIsFinishingArea(false)
-            }}
-          >
-            <Square className="w-4 h-4 mr-2" />
-            Measure Area
-          </Button>
-          
-          <div className="ml-4 flex items-center space-x-2">
-            <span className="text-sm font-medium">Scale:</span>
-            <select
-              className="border rounded px-2 py-1 text-sm bg-background"
-              value={archScale}
-              onChange={(e) => setArchScale(Number(e.target.value))}
-            >
-              {SCALE_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
+    <div className="flex h-full bg-gray-100">
+      <div className="flex-1 flex flex-col">
+        {/* Toolbar */}
+        <div className="flex items-center justify-between p-2 bg-white border-b">
+            <div className="flex items-center gap-2">
+                <Button variant={measuring && measurementType === 'length' ? 'secondary' : 'ghost'} onClick={() => { 
+                  console.log('Length button clicked, current measuring state:', measuring);
+                  setMeasuring(true); 
+                  setMeasurementType('length'); 
+                  setPoints([]); 
+                  setSelectedMeasurement(null); 
+                  setEditingPoints(false); 
+                  setCalibrating(false); 
+                  console.log('Length measuring mode activated');
+                }}>
+                    <Ruler className="h-4 w-4 mr-2" /> Length
+                </Button>
+                <Button variant={measuring && measurementType === 'area' ? 'secondary' : 'ghost'} onClick={() => { 
+                  console.log('Area button clicked, current measuring state:', measuring);
+                  setMeasuring(true); 
+                  setMeasurementType('area'); 
+                  setPoints([]); 
+                  setSelectedMeasurement(null); 
+                  setEditingPoints(false); 
+                  setCalibrating(false); 
+                  console.log('Area measuring mode activated');
+                }}>
+                    <Square className="h-4 w-4 mr-2" /> Area
+                </Button>
+                <Button variant={calibrating ? 'secondary' : 'ghost'} onClick={() => { 
+                  console.log('Calibrate button clicked');
+                  setCalibrating(true); 
+                  setMeasuring(false); 
+                  setPoints([]); 
+                  setCalibrationPoints([]); 
+                  setCalibrationPixelLength(null); 
+                }}>
+                    <Move className="h-4 w-4 mr-2" /> Calibrate
+                </Button>
+                {(measuring || calibrating) && (
+                  <div className="ml-4 px-3 py-1 bg-blue-100 text-blue-800 rounded-md text-sm font-medium">
+                    {measuring ? `Measuring ${measurementType}` : 'Calibrating'}
+                  </div>
+                )}
+            </div>
+            <div className="flex items-center gap-2">
+                <Button variant="ghost" onClick={() => setScale(s => s * 1.2)}>Zoom In</Button>
+                <Button variant="ghost" onClick={() => setScale(s => s / 1.2)}>Zoom Out</Button>
+                <Button variant="ghost" onClick={() => setSidebarVisible(!sidebarVisible)}>{sidebarVisible ? 'Hide Sidebar' : 'Show Sidebar'}</Button>
+            </div>
         </div>
-        <div className="space-x-2">
-          <Button
-            variant="outline"
-            onClick={() => setScale(scale => Math.max(0.5, scale - 0.1))}
-            disabled={scale <= 0.5}
-          >
-            Zoom Out
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => setScale(scale => Math.min(2.0, scale + 0.1))}
-            disabled={scale >= 2.0}
-          >
-            Zoom In
-          </Button>
-        </div>
-      </div>
 
-      <div className="flex flex-1 min-h-0 p-4 gap-4">
-        <div className="flex-1 overflow-auto">
-          <div className="relative border rounded-lg overflow-hidden bg-white h-full" ref={containerRef} style={{ minHeight: '400px' }}>
-            <Document
-              file={pdfData}
-              onLoadSuccess={onDocumentLoadSuccess}
-              loading={<div className="flex justify-center items-center h-64">Loading PDF...</div>}
-              error={<div className="flex justify-center items-center h-64 text-red-500">Error loading PDF. Please try again.</div>}
-            >
-              <Page
-                pageNumber={pageNumber}
-                scale={scale}
-                renderAnnotationLayer={false}
-                renderTextLayer={false}
-                loading={<div className="flex justify-center items-center h-64">Loading page...</div>}
-                onLoadSuccess={onPageLoadSuccess}
-                onLoadError={(error) => {
-                  console.error('Page load error:', error);
-                }}
-              />
-            </Document>
+        {/* PDF Viewer */}
+        <div 
+          ref={containerRef} 
+          className="flex-1 overflow-auto relative bg-white flex items-center justify-center"
+          style={{ minHeight: '100%' }}
+        >
+          <div 
+            ref={pdfContainerRef}
+            className="relative" 
+            style={{
+              width: pageDimensions?.width || 'auto',
+              height: pageDimensions?.height || 'auto',
+              minWidth: '100%',
+              minHeight: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              position: 'relative'
+            }}
+          >
+            {/* PDF Document */}
+            {pdfData && pdfLoaded && (
+              <div className="relative" style={{ zIndex: 1 }}>
+                <Document 
+                  file={pdfData} 
+                  onLoadSuccess={onDocumentLoadSuccess}
+                  loading={
+                    <div className="flex items-center justify-center w-full h-full">
+                      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+                    </div>
+                  }
+                  error={
+                    <div className="text-red-500 p-4 bg-red-50 rounded">
+                      Failed to load PDF document
+                    </div>
+                  }
+                  className="shadow-lg"
+                >
+                  <Page 
+                    pageNumber={pageNumber} 
+                    scale={scale} 
+                    onLoadSuccess={onPageLoadSuccess} 
+                    onLoadError={onPageLoadError}
+                    renderTextLayer={false} 
+                    renderAnnotationLayer={false}
+                    loading={
+                      <div className="flex items-center justify-center w-full h-full">
+                        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+                      </div>
+                    }
+                    className="transition-opacity duration-300"
+                  />
+                </Document>
+              </div>
+            )}
+            
+            {/* Canvas Overlay */}
             <canvas
               ref={canvasRef}
-              onClick={editingPoints ? handlePointSelect : handleCanvasClick}
+              className="absolute top-0 left-0 pointer-events-auto"
+              width={pageDimensions?.width || 800}
+              height={pageDimensions?.height || 600}
+              onMouseDown={handleMouseDown}
               onMouseMove={handleCanvasMouseMove}
               onMouseUp={handleCanvasMouseUp}
               onMouseLeave={handleCanvasMouseUp}
-              className="absolute top-0 left-0 w-full h-full cursor-crosshair"
-              style={{ 
-                opacity: measuring || editingPoints ? 1 : 0.7,
-                pointerEvents: measuring || editingPoints ? 'auto' : 'none',
-                cursor: editingPoints ? 'pointer' : 'crosshair'
+              onClick={(e) => console.log('Canvas clicked!', e)}
+              style={{
+                touchAction: 'none',
+                zIndex: 10,
+                opacity: measuring || calibrating ? 1 : 0.9,
+                transition: 'opacity 0.2s ease-in-out',
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                pointerEvents: 'auto',
+                cursor: measuring ? 'crosshair' : calibrating ? 'crosshair' : 'default',
+                border: measuring || calibrating ? '2px solid #3b82f6' : 'none'
               }}
             />
           </div>
         </div>
-
-        <div className="w-80 flex flex-col bg-white border rounded-lg overflow-hidden">
-          <div className="p-4 border-b">
-            <h3 className="font-semibold">Measurement Summary</h3>
-          </div>
-          <div className="flex-1 overflow-y-auto p-4">
-            {/* Division Totals */}
-            {measurements.length > 0 && (
-              <div className="mb-6 border-b pb-4">
-                <h4 className="font-medium mb-3">Division Totals</h4>
-                {Object.entries(
-                  measurements.reduce((acc, m) => {
-                    if (m.type === 'area' && m.materialType && m.pricePerUnit) {
-                      const total = m.value * m.pricePerUnit;
-                      acc[m.materialType] = (acc[m.materialType] || 0) + total;
-                    }
-                    return acc;
-                  }, {} as Record<string, number>)
-                ).map(([material, total]) => (
-                  <div key={material} className="flex justify-between items-center py-1">
-                    <span className="capitalize">{material}:</span>
-                    <span className="font-medium">${total.toFixed(2)}</span>
-                  </div>
-                ))}
-                <div className="border-t mt-2 pt-2 flex justify-between items-center font-semibold">
-                  <span>Total:</span>
-                  <span>
-                    ${measurements
-                      .filter(m => m.type === 'area' && m.materialType && m.pricePerUnit)
-                      .reduce((sum, m) => sum + (m.value * m.pricePerUnit!), 0)
-                      .toFixed(2)}
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {/* Individual Measurements */}
-            <div className="space-y-4">
-              <h4 className="font-medium mb-2">Individual Measurements</h4>
-              {measurements.map((measurement) => (
-                <div 
-                  key={measurement.id}
-                  className={`relative p-3 border rounded-lg cursor-pointer transition-colors ${
-                    selectedMeasurement?.id === measurement.id 
-                      ? 'border-blue-500 bg-blue-50' 
-                      : 'hover:border-gray-300'
-                  }`}
-                  onClick={() => handleMeasurementSelect(measurement)}
-                >
-                  {onMeasurementDelete && (
-                    <button
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        console.log('Delete button clicked for measurement:', measurement.id); // Debug log
-                        handleMeasurementDelete(e, measurement.id);
-                      }}
-                      className="absolute top-2 right-2 p-1.5 rounded-full hover:bg-red-100 text-gray-500 hover:text-red-500 transition-colors"
-                      title="Delete measurement"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M18 6L6 18"></path>
-                        <path d="M6 6l12 12"></path>
-                      </svg>
-                    </button>
-                  )}
-                  <div className="flex flex-col">
-                    <div className="font-medium">{measurement.label}</div>
-                    <div className="text-sm text-gray-600">
-                      {measurement.value.toFixed(2)} {measurement.unit}
-                    </div>
-                    {measurement.materialType && (
-                      <div className="text-sm text-gray-600">
-                        {measurement.materialType} - ${measurement.pricePerUnit?.toFixed(2)}/sq ft
-                      </div>
-                    )}
-                    {measurement.type === 'area' && measurement.materialType && measurement.pricePerUnit && (
-                      <div className="text-sm font-medium text-gray-700 mt-1">
-                        Total: ${(measurement.value * measurement.pricePerUnit).toFixed(2)}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Edit Panel */}
-            {selectedMeasurement && (
-              <div className="mt-4 pt-4 border-t">
-                <div className="flex justify-between items-center mb-3">
-                  <h4 className="font-medium">Edit Measurement</h4>
-                  {selectedMeasurement.type === 'area' && (
-                    <Button
-                      variant={editingPoints ? 'default' : 'outline'}
-                      onClick={() => setEditingPoints(!editingPoints)}
-                      className="text-sm"
-                    >
-                      {editingPoints ? 'Done Editing' : 'Edit Points'}
-                    </Button>
-                  )}
-                </div>
-                
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Material
-                    </label>
-                    <select
-                      className="w-full border rounded px-2 py-1 text-sm bg-background"
-                      value={editingMaterial}
-                      onChange={(e) => {
-                        setEditingMaterial(e.target.value);
-                        const material = MATERIAL_OPTIONS.find(opt => opt.value === e.target.value);
-                        if (material) {
-                          setEditingPrice(material.defaultPrice);
-                        }
-                      }}
-                    >
-                      <option value="">Select Material</option>
-                      {MATERIAL_OPTIONS.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label} - ${option.defaultPrice}/sq ft
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {editingMaterial && (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Price per sq ft
-                      </label>
-                      <div className="flex items-center space-x-2">
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          className="border rounded px-2 py-1 text-sm w-full"
-                          value={editingPrice}
-                          onChange={(e) => setEditingPrice(Number(e.target.value))}
-                          placeholder="Price per sq ft"
-                        />
-                        <span className="text-sm text-gray-600">/ sq ft</span>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="flex justify-end space-x-2">
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        setSelectedMeasurement(null);
-                        setEditingMaterial("");
-                        setEditingPrice(0);
-                        setEditingPoints(false);
-                      }}
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      onClick={handleMeasurementUpdate}
-                      disabled={!editingMaterial || editingPrice <= 0}
-                    >
-                      Save Changes
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
       </div>
 
-      {numPages && numPages > 1 && (
-        <div className="flex justify-center items-center py-2 bg-white border-t">
-          <Button
-            variant="outline"
-            onClick={() => setPageNumber(page => Math.max(1, page - 1))}
-            disabled={pageNumber <= 1}
-          >
-            Previous
-          </Button>
-          <span className="mx-4">
-            Page {pageNumber} of {numPages}
-          </span>
-          <Button
-            variant="outline"
-            onClick={() => setPageNumber(page => Math.min(numPages, page + 1))}
-            disabled={pageNumber >= numPages}
-          >
-            Next
-          </Button>
+      {/* Sidebar */}
+      {sidebarVisible && (
+        <div className="w-80 bg-gray-50 border-l p-4 overflow-y-auto flex flex-col">
+          <h2 className="text-lg font-bold mb-4">Measurements</h2>
+          <div className="space-y-2 flex-1">
+            {measurements.map(m => (
+              <div key={m.id} className={`p-2 rounded-md cursor-pointer ${selectedMeasurement?.id === m.id ? 'bg-blue-100 border border-blue-400' : 'bg-white'}`} onClick={() => { setSelectedMeasurement(m); setMeasuring(false); }}>
+                <div className="flex justify-between items-center">
+                  <span className="font-semibold">{m.label}</span>
+                  <Button variant="ghost" size="icon" onClick={(e) => handleMeasurementDelete(e, m.id)}>
+                    <Trash2 className="h-4 w-4 text-red-500" />
+                  </Button>
+                </div>
+                <div>{convertToDisplayUnit(m.value, m.type).value.toFixed(2)} {convertToDisplayUnit(m.value, m.type).unit}</div>
+              </div>
+            ))}
+          </div>
+          {selectedMeasurement && (
+            <div className="mt-6 pt-4 border-t">
+              <h3 className="font-bold">Edit: {selectedMeasurement.label}</h3>
+              <Button onClick={() => setEditingPoints(p => !p)} className="mt-2 w-full">
+                {editingPoints ? 'Finish Editing' : 'Edit Points'}
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Calibration Modal */}
+      {calibrationModal && (
+        <div className="absolute inset-0 bg-black bg-opacity-50 flex justify-center items-center z-20">
+          <div className="bg-white p-6 rounded-lg shadow-xl">
+            <h2 className="text-xl font-bold mb-4">Set Scale</h2>
+            <form onSubmit={handleCalibrationSubmit}>
+              <p className="mb-4">Click two points on the plan, then enter the known distance between them.</p>
+              {calibrationPixelLength && <p className="text-sm text-gray-600 mb-2">Pixel distance: {calibrationPixelLength.toFixed(2)}px</p>}
+              <div className="my-4">
+                <label className="block text-sm font-medium text-gray-700">Known Distance</label>
+                <div className="flex items-center gap-2 mt-1">
+                  <input type="text" value={calibrationInput} onChange={(e) => setCalibrationInput(e.target.value)} className="border p-2 rounded-md w-full" placeholder="e.g., 10" required />
+                  <select value={calibrationUnit} onChange={(e) => setCalibrationUnit(e.target.value as 'ft' | 'm' | 'in')} className="border p-2 rounded-md">
+                    <option value="ft">Feet</option>
+                    <option value="m">Meters</option>
+                    <option value="in">Inches</option>
+                  </select>
+                </div>
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="outline" onClick={() => { setCalibrationModal(false); setCalibrating(false); setCalibrationPoints([]); }}>Cancel</Button>
+                <Button type="submit" disabled={!calibrationPixelLength}>Set Scale</Button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>
-  )
+  );
 }
-

@@ -32,7 +32,11 @@ export async function GET(
         },
         budget: {
           include: {
-            divisionBudgets: true
+            divisionBudgets: {
+              include: {
+                subcategories: true
+              }
+            }
           }
         },
         invoices: true,

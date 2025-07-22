@@ -2,6 +2,8 @@ import { NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authConfig } from "@/lib/auth.config"
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   try {
     console.log('API /user route called');

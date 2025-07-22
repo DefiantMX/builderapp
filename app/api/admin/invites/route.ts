@@ -3,6 +3,8 @@ import { cookies } from "next/headers"
 import crypto from "crypto"
 import { PrismaClient } from "@prisma/client"
 
+export const dynamic = 'force-dynamic';
+
 const prisma = new PrismaClient()
 
 // This is a mock invitation database. In a real application, you'd use a proper database.

@@ -22,6 +22,7 @@ export default function ProjectNav({ project }: { project: Project }) {
     { name: 'Finance', href: `/projects/${project.id}/finance` },
     { name: 'Documents', href: `/projects/${project.id}/documents` },
     { name: 'Bids', href: `/projects/${project.id}/bids` },
+    { name: 'Takeoff', href: `/projects/${project.id}/takeoff` },
   ]
 
   return (

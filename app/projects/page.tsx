@@ -4,6 +4,8 @@ import { db } from "@/lib/db"
 import ProjectList from "@/app/components/ProjectList"
 import { Session } from 'next-auth'
 
+export const dynamic = 'force-dynamic';
+
 // Define session type
 type SessionWithUserId = Session & {
   user?: {

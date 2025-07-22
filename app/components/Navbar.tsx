@@ -35,6 +35,12 @@ export default function Navbar() {
                   Tasks
                 </Link>
                 <Link
+                  href="/estimating"
+                  className="px-3 py-2 rounded-md text-sm font-medium hover:bg-gray-700"
+                >
+                  Estimating
+                </Link>
+                <Link
                   href="/finances"
                   className="px-3 py-2 rounded-md text-sm font-medium hover:bg-gray-700"
                 >

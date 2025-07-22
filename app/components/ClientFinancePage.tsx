@@ -8,7 +8,7 @@ import CreateDrawForm from "@/app/components/CreateDrawForm"
 import EditDrawForm from "@/app/components/EditDrawForm"
 import UploadInvoiceForm from "@/app/components/UploadInvoiceForm"
 import ChangeOrderForm from "@/app/components/ChangeOrderForm"
-import { DIVISIONS } from "@/lib/constants"
+import { DIVISIONS, DIVISION_SUBCATEGORIES } from "@/lib/constants"
 import { FileText } from "lucide-react"
 
 type DivisionCode = keyof typeof DIVISIONS
@@ -64,6 +64,11 @@ interface ProjectBudget {
   divisionBudgets: {
     division: DivisionCode
     amount: number
+    subcategories?: {
+      subcategory: string
+      amount: number
+      description: string
+    }[]
   }[]
 }
 
@@ -142,6 +147,33 @@ export default function ClientFinancePage({
         }
         const data = await response.json()
         if (mounted) {
+          // Convert legacy budget data to new format with subcategories
+          console.log('Raw budget data from API:', data.budget)
+          if (data.budget?.divisionBudgets) {
+            data.budget.divisionBudgets = data.budget.divisionBudgets.map((division: any) => {
+              // If division has subcategories, use them
+              if (division.subcategories && division.subcategories.length > 0) {
+                return {
+                  ...division,
+                  subcategories: division.subcategories
+                }
+              }
+              
+              // If no subcategories exist, create a default one with the division amount
+              const defaultSubcategory = {
+                subcategory: 'General',
+                amount: division.amount || 0,
+                description: division.description || ''
+              }
+              
+              return {
+                ...division,
+                subcategories: [defaultSubcategory]
+              }
+            })
+            console.log('Converted budget data:', data.budget.divisionBudgets)
+          }
+          
           setProject(data)
           // Calculate overview data
           const totalBudget = data.budget?.totalAmount || 0
@@ -379,6 +411,80 @@ export default function ClientFinancePage({
     }
   }
 
+  const handleExportBudgetPDF = async () => {
+    if (!project || !currentBudget) {
+      console.error('Missing project or budget data')
+      return
+    }
+
+    console.log('Exporting budget PDF for project:', project.name)
+    console.log('Budget data:', currentBudget)
+
+    // Use the budget data as-is, don't redistribute amounts
+    const convertedBudget = {
+      ...currentBudget,
+      divisionBudgets: currentBudget.divisionBudgets.map((division: any) => {
+        // If division has subcategories, use them exactly as they are
+        if (division.subcategories && division.subcategories.length > 0) {
+          return {
+            ...division,
+            subcategories: division.subcategories
+          }
+        }
+        
+        // If no subcategories exist, create a default one
+        const defaultSubcategory = {
+          subcategory: 'General',
+          amount: division.amount || 0,
+          description: division.description || ''
+        }
+        
+        return {
+          ...division,
+          subcategories: [defaultSubcategory]
+        }
+      })
+    }
+
+    console.log('Converted budget data for PDF:', convertedBudget)
+    console.log('Sample division with subcategories:', convertedBudget.divisionBudgets[0])
+    console.log('Sample division subcategories after conversion:', convertedBudget.divisionBudgets[0]?.subcategories)
+
+    try {
+      const response = await fetch(`/api/projects/${projectId}/budget/export-pdf`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          projectName: project.name,
+          budget: convertedBudget,
+          divisions: DIVISIONS,
+          subcategories: DIVISION_SUBCATEGORIES
+        }),
+      })
+
+      console.log('PDF export response status:', response.status)
+
+      if (response.ok) {
+        const blob = await response.blob()
+        console.log('PDF blob size:', blob.size)
+        const url = window.URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `${project.name}-Budget.pdf`
+        a.click()
+        window.URL.revokeObjectURL(url)
+        console.log('PDF download initiated')
+      } else {
+        const errorText = await response.text()
+        console.error('Failed to export budget PDF:', errorText)
+      }
+    } catch (error) {
+      console.error('Error exporting budget PDF:', error)
+    }
+  }
+
   // Helper function to safely get project data
   const getProjectData = () => {
     const currentProject = project
@@ -433,22 +539,32 @@ export default function ClientFinancePage({
       <div className="space-y-6">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-2xl font-semibold">Project Budget</h2>
-          {currentBudget && (
-            <button 
-              onClick={() => setShowBudgetForm(true)}
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-            >
-              Edit Budget
-            </button>
-          )}
-          {!currentBudget && (
-            <button 
-              onClick={() => setShowBudgetForm(true)}
-              className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
-            >
-              Set Budget
-            </button>
-          )}
+          <div className="flex gap-2">
+            {currentBudget && (
+              <>
+                <button 
+                  onClick={() => handleExportBudgetPDF()}
+                  className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
+                >
+                  Export PDF
+                </button>
+                <button 
+                  onClick={() => setShowBudgetForm(true)}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                >
+                  Edit Budget
+                </button>
+              </>
+            )}
+            {!currentBudget && (
+              <button 
+                onClick={() => setShowBudgetForm(true)}
+                className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
+              >
+                Set Budget
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Remove BudgetForm rendering from here */}

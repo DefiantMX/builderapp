@@ -8,10 +8,13 @@ export async function GET(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  console.log('Plans API called with params:', params)
   try {
     const session = await auth()
+    console.log('Session in plans API:', session ? 'Found' : 'Not found')
     
     if (!session || !session.user) {
+      console.log('No session or user, returning 401')
       return NextResponse.json(
         { error: "Authentication required" },
         { status: 401 }

@@ -3,6 +3,8 @@ import { auth } from "@/lib/auth"
 import { redirect } from "next/navigation"
 import { db } from "@/lib/db"
 
+export const dynamic = 'force-dynamic';
+
 type Project = {
   id: string
   name: string
