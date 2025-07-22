@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useSession } from "next-auth/react";
+import SimplePDFViewer from "@/app/components/SimplePDFViewer";
 
 // Types
 type Plan = {
@@ -299,17 +300,18 @@ export default function ProjectTakeoffPage({ params }: { params: { id: string } 
                 </div>
 
                 {selectedPlan && (
-                  <div className="border rounded-lg p-4 bg-gray-50">
-                    <h3 className="font-semibold mb-2">{selectedPlan.title}</h3>
-                    {selectedPlan.description && (
-                      <p className="text-sm text-gray-600 mb-2">{selectedPlan.description}</p>
-                    )}
-                    <div className="aspect-video bg-white border rounded flex items-center justify-center">
-                      <div className="text-center text-gray-500">
-                        <FileText className="h-12 w-12 mx-auto mb-2" />
-                        <p>PDF Viewer</p>
-                        <p className="text-sm">Plan: {selectedPlan.title}</p>
-                      </div>
+                  <div className="border rounded-lg bg-gray-50">
+                    <div className="p-4 border-b bg-white">
+                      <h3 className="font-semibold">{selectedPlan.title}</h3>
+                      {selectedPlan.description && (
+                        <p className="text-sm text-gray-600 mt-1">{selectedPlan.description}</p>
+                      )}
+                    </div>
+                    <div className="h-96">
+                      <SimplePDFViewer 
+                        fileUrl={selectedPlan.fileUrl} 
+                        title={selectedPlan.title}
+                      />
                     </div>
                   </div>
                 )}
