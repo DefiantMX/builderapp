@@ -14,18 +14,25 @@ export default async function EstimatingPage() {
 
   const estimatingTools = [
     {
-      title: "Takeoff Calculator",
-      description: "Calculate material quantities and costs from project plans",
+      title: "Advanced Takeoff",
+      description: "Professional takeoff tools with calibration and division-based organization",
+      icon: Calculator,
+      href: "/estimating/advanced-takeoff",
+      color: "bg-blue-500"
+    },
+    {
+      title: "Basic Takeoff",
+      description: "Simple takeoff calculator for quick measurements",
       icon: Calculator,
       href: "/estimating/takeoff",
-      color: "bg-blue-500"
+      color: "bg-green-500"
     },
     {
       title: "Budget Templates",
       description: "Use pre-built budget templates for common project types",
       icon: FileText,
       href: "/estimating/templates",
-      color: "bg-green-500"
+      color: "bg-purple-500"
     },
     {
       title: "Cost Analysis",
@@ -201,10 +208,16 @@ export default async function EstimatingPage() {
           <h3 className="text-lg font-semibold text-gray-800 mb-4">Quick Actions</h3>
           <div className="space-y-3">
             <Link 
-              href="/estimating/takeoff"
+              href="/estimating/advanced-takeoff"
               className="block w-full text-left px-4 py-2 bg-blue-50 text-blue-700 rounded-md hover:bg-blue-100 transition-colors"
             >
-              Start New Takeoff
+              Advanced Takeoff
+            </Link>
+            <Link 
+              href="/estimating/takeoff"
+              className="block w-full text-left px-4 py-2 bg-green-50 text-green-700 rounded-md hover:bg-green-100 transition-colors"
+            >
+              Basic Takeoff
             </Link>
             <Link 
               href="/estimating/templates"

@@ -251,9 +251,9 @@ export default function ProjectTakeoffPage({ params }: { params: { id: string } 
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         {/* PDF Viewer */}
-        <Card>
+        <Card className="xl:col-span-2">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <FileText className="h-5 w-5" />
@@ -307,7 +307,7 @@ export default function ProjectTakeoffPage({ params }: { params: { id: string } 
                         <p className="text-sm text-gray-600 mt-1">{selectedPlan.description}</p>
                       )}
                     </div>
-                    <div className="h-96">
+                    <div className="h-[600px]">
                       <SimplePDFViewer 
                         fileUrl={selectedPlan.fileUrl} 
                         title={selectedPlan.title}
