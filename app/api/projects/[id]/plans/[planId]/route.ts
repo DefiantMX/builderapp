@@ -1,57 +1,52 @@
-import { NextResponse } from "next/server"
-import { prisma } from "@/lib/prisma"
-import { auth } from "@/lib/auth"
+import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 
-export async function DELETE(
-  request: Request,
+export async function PATCH(
+  request: NextRequest,
   { params }: { params: { id: string; planId: string } }
 ) {
   try {
-    const session = await auth()
-
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    const session = await auth();
+    if (!session?.user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // First verify that the project belongs to the user
-    const project = await prisma.project.findFirst({
-      where: {
-        id: params.id,
-        userId: session.user.id,
-      },
-    })
+    const { pixelDistance, realDistance, calibrationUnit, scale } = await request.json();
 
-    if (!project) {
-      return NextResponse.json({ error: "Project not found" }, { status: 404 })
-    }
-
-    // Then verify that the plan belongs to the project
+    // Verify the plan belongs to the project and user has access
     const plan = await prisma.plan.findFirst({
       where: {
         id: params.planId,
         projectId: params.id,
-      },
-    })
+        project: {
+          userId: session.user.id
+        }
+      }
+    });
 
     if (!plan) {
-      return NextResponse.json({ error: "Plan not found" }, { status: 404 })
+      return NextResponse.json({ error: "Plan not found" }, { status: 404 });
     }
 
-    // TODO: Delete the actual file from storage service
+    // Update the plan with calibration data
+    const updatedPlan = await prisma.plan.update({
+      where: { id: params.planId },
+      data: {
+        pixelDistance,
+        realDistance,
+        calibrationUnit,
+        scale,
+      }
+    });
 
-    await prisma.plan.delete({
-      where: {
-        id: params.planId,
-      },
-    })
-
-    return NextResponse.json({ message: "Plan deleted successfully" })
+    return NextResponse.json(updatedPlan);
   } catch (error) {
-    console.error("Error deleting plan:", error)
+    console.error("Error updating plan:", error);
     return NextResponse.json(
-      { error: "Error deleting plan" },
+      { error: "Failed to update plan" },
       { status: 500 }
-    )
+    );
   }
 }
 

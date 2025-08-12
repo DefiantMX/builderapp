@@ -2,6 +2,56 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { auth } from '@/lib/auth'
 
+export async function DELETE(
+  request: Request,
+  { params }: { params: { id: string; measurementId: string } }
+) {
+  try {
+    const session = await auth()
+    if (!session) {
+      return new NextResponse('Unauthorized', { status: 401 })
+    }
+
+    // First verify that the project belongs to the user
+    const project = await prisma.project.findFirst({
+      where: {
+        id: params.id,
+        userId: session.user.id
+      }
+    })
+
+    if (!project) {
+      return new NextResponse('Project not found', { status: 404 })
+    }
+
+    // Get the measurement and verify it belongs to a plan in this project
+    const measurement = await prisma.measurement.findFirst({
+      where: {
+        id: params.measurementId,
+        plan: {
+          projectId: params.id
+        }
+      }
+    })
+
+    if (!measurement) {
+      return new NextResponse('Measurement not found', { status: 404 })
+    }
+
+    // Delete the measurement
+    await prisma.measurement.delete({
+      where: {
+        id: params.measurementId
+      }
+    })
+
+    return new NextResponse('Measurement deleted successfully', { status: 200 })
+  } catch (error) {
+    console.error('Error in DELETE /api/projects/[id]/takeoff/[measurementId]:', error)
+    return new NextResponse('Internal Server Error', { status: 500 })
+  }
+}
+
 export async function PATCH(
   request: Request,
   { params }: { params: { id: string; measurementId: string } }

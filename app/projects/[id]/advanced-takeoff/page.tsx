@@ -35,6 +35,11 @@ interface Plan {
   description?: string;
   fileUrl: string;
   fileType: string;
+  // Calibration data
+  pixelDistance?: number;
+  realDistance?: number;
+  calibrationUnit?: string;
+  scale?: number;
   createdAt: Date;
 }
 
@@ -68,6 +73,12 @@ export default function AdvancedTakeoffPage({ params }: { params: { id: string }
   const [showExportModal, setShowExportModal] = useState(false);
 
   const selectedPlan = plans.find(p => p.id === selectedPlanId);
+  
+  // Debug logging
+  console.log("Plans:", plans);
+  console.log("Selected plan ID:", selectedPlanId);
+  console.log("Selected plan:", selectedPlan);
+  console.log("Selected plan file URL:", selectedPlan?.fileUrl);
 
   // Fetch project and plans
   useEffect(() => {
@@ -170,6 +181,44 @@ export default function AdvancedTakeoffPage({ params }: { params: { id: string }
       }
     } catch (error) {
       console.error("Failed to delete measurement:", error);
+    }
+  };
+
+  const handleSaveCalibration = async (calibrationData: {
+    pixelDistance: number;
+    realDistance: number;
+    unit: string;
+    scale: number;
+  }) => {
+    if (!selectedPlan) return;
+    
+    try {
+      const response = await fetch(`/api/projects/${params.id}/plans/${selectedPlan.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          pixelDistance: calibrationData.pixelDistance,
+          realDistance: calibrationData.realDistance,
+          calibrationUnit: calibrationData.unit,
+          scale: calibrationData.scale,
+        }),
+      });
+
+      if (response.ok) {
+        // Update the plan in state with new calibration data
+        setPlans(prev => prev.map(plan => 
+          plan.id === selectedPlan.id 
+            ? { ...plan, ...calibrationData, calibrationUnit: calibrationData.unit }
+            : plan
+        ));
+        console.log('Calibration saved successfully');
+      } else {
+        console.error('Failed to save calibration');
+      }
+    } catch (error) {
+      console.error('Error saving calibration:', error);
     }
   };
 
@@ -336,6 +385,15 @@ export default function AdvancedTakeoffPage({ params }: { params: { id: string }
               backgroundImageUrl={selectedPlan.fileUrl}
               measurements={filteredMeasurements}
               selectedMeasurementId={selectedMeasurementId}
+              initialCalibration={
+                selectedPlan.scale ? {
+                  pixelDistance: selectedPlan.pixelDistance || 0,
+                  realDistance: selectedPlan.realDistance || 0,
+                  unit: selectedPlan.calibrationUnit || "ft",
+                  scale: selectedPlan.scale
+                } : undefined
+              }
+              onSaveCalibration={handleSaveCalibration}
               onAddMeasurement={handleAddMeasurement}
               onUpdateMeasurement={handleUpdateMeasurement}
               onDeleteMeasurement={handleDeleteMeasurement}

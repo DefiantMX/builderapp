@@ -121,6 +121,11 @@ model Plan {
   description  String?
   fileUrl      String
   fileType     String
+  // Calibration data
+  pixelDistance Float?      // Pixel distance for calibration
+  realDistance   Float?     // Real-world distance for calibration
+  calibrationUnit String?   // Unit for calibration (ft, m, etc.)
+  scale          Float?     // Calculated scale (pixels per unit)
   project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
   projectId    String
   measurements Measurement[]
@@ -131,11 +136,16 @@ model Plan {
 model Measurement {
   id           String   @id @default(cuid())
   planId       String
-  type         String   // "length" or "area"
+  type         String   // "line", "area", "count", "text"
   label        String
   value        Float
-  unit         String   // "ft" or "sq ft"
+  unit         String   // "ft", "sq ft", "count", "text"
   points       String   // JSON string of points array
+  division     String?  // CSI division (e.g., "03", "04", etc.)
+  subcategory  String?  // Subcategory within division
+  layer        String?  // Layer name for organization
+  color        String?  // Color hex code for display
+  notes        String?  // Additional notes
   materialType String?  // Material type (e.g., "siding", "concrete", etc.)
   pricePerUnit Float?   // Price per unit (e.g., price per square foot)
   plan         Plan     @relation(fields: [planId], references: [id], onDelete: Cascade)
