@@ -107,6 +107,7 @@ export default function AdvancedTakeoffPage({ params }: { params: { id: string }
           const measurementsData = await measurementsResponse.json();
           setMeasurements(measurementsData.map((m: any) => ({
             ...m,
+            points: typeof m.points === 'string' ? JSON.parse(m.points) : m.points,
             createdAt: new Date(m.createdAt)
           })));
         }
@@ -139,6 +140,7 @@ export default function AdvancedTakeoffPage({ params }: { params: { id: string }
         const newMeasurement = await response.json();
         setMeasurements(prev => [...prev, {
           ...newMeasurement,
+          points: typeof newMeasurement.points === 'string' ? JSON.parse(newMeasurement.points) : newMeasurement.points,
           createdAt: new Date(newMeasurement.createdAt)
         }]);
       }
@@ -161,7 +163,11 @@ export default function AdvancedTakeoffPage({ params }: { params: { id: string }
       if (response.ok) {
         const updatedMeasurement = await response.json();
         setMeasurements(prev => prev.map(m => 
-          m.id === id ? { ...m, ...updatedMeasurement } : m
+          m.id === id ? { 
+            ...m, 
+            ...updatedMeasurement,
+            points: typeof updatedMeasurement.points === 'string' ? JSON.parse(updatedMeasurement.points) : updatedMeasurement.points
+          } : m
         ));
       }
     } catch (error) {
@@ -222,12 +228,21 @@ export default function AdvancedTakeoffPage({ params }: { params: { id: string }
     }
   };
 
-  // Filter measurements
+  // Filter measurements by plan and other criteria
   const filteredMeasurements = measurements.filter(m => {
+    // Filter by selected plan
+    if (selectedPlanId && m.planId !== selectedPlanId) return false;
+    // Filter by division
     if (filterDivision !== "all" && m.division !== filterDivision) return false;
+    // Filter by layer
     if (filterLayer !== "all" && m.layer !== filterLayer) return false;
     return true;
   });
+
+  // Debug logging
+  console.log("All measurements:", measurements);
+  console.log("Selected plan ID:", selectedPlanId);
+  console.log("Filtered measurements:", filteredMeasurements);
 
   // Calculate totals by division
   const totalsByDivision = measurements.reduce((acc, m) => {

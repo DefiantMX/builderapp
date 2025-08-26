@@ -16,7 +16,8 @@ import {
   Trash2,
   Copy,
   Save,
-  Download
+  Download,
+  Circle as CircleIcon
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -84,6 +85,21 @@ const LAYERS = [
   "Site Work"
 ];
 
+// Common architectural scales
+const ARCHITECTURAL_SCALES = [
+  { label: "1\" = 1'", value: 12, description: "Full Scale" },
+  { label: "1\" = 2'", value: 24, description: "Half Scale" },
+  { label: "1\" = 4'", value: 48, description: "Quarter Scale" },
+  { label: "1\" = 8'", value: 96, description: "Eighth Scale" },
+  { label: "1\" = 16'", value: 192, description: "Sixteenth Scale" },
+  { label: "1\" = 32'", value: 384, description: "Thirty-second Scale" },
+  { label: "1\" = 60'", value: 720, description: "Sixtieth Scale" },
+  { label: "1\" = 100'", value: 1200, description: "Hundredth Scale" },
+  { label: "1\" = 200'", value: 2400, description: "Two-hundredth Scale" },
+  { label: "1\" = 500'", value: 6000, description: "Five-hundredth Scale" },
+  { label: "1\" = 1000'", value: 12000, description: "Thousandth Scale" },
+];
+
 export default function AdvancedTakeoffCanvas({
   width = 1200,
   height = 800,
@@ -103,6 +119,7 @@ export default function AdvancedTakeoffCanvas({
   
   // Drawing state
   const [isDrawing, setIsDrawing] = useState(false);
+  const [isShiftPressed, setIsShiftPressed] = useState(false);
   
   // Background image state
   const [backgroundImage, setBackgroundImage] = useState<HTMLImageElement | null>(null);
@@ -148,24 +165,15 @@ export default function AdvancedTakeoffCanvas({
     }
   }, [backgroundImageUrl]);
   
-  // Calibration state
-  const [calibration, setCalibration] = useState<CalibrationData>(
-    initialCalibration || {
-      pixelDistance: 0,
-      realDistance: 0,
-      unit: "ft",
-      scale: 1
-    }
-  );
-  const [isCalibrating, setIsCalibrating] = useState(false);
-  const [calibrationPoints, setCalibrationPoints] = useState<number[]>([]);
-  const [calibrationInput, setCalibrationInput] = useState<string>("");
-  const [showCalibrationModal, setShowCalibrationModal] = useState(false);
+
   
   // UI state
   const [scale, setScale] = useState(1);
+  const [stageX, setStageX] = useState(0);
+  const [stageY, setStageY] = useState(0);
   const [showProperties, setShowProperties] = useState(true);
   const [showLayers, setShowLayers] = useState(true);
+  const [selectedArchitecturalScale, setSelectedArchitecturalScale] = useState<string>("720"); // Default to 1"=60'
   
   // Text tool state
   const [textInput, setTextInput] = useState("");
@@ -175,6 +183,12 @@ export default function AdvancedTakeoffCanvas({
   // Count tool state
   const [countItems, setCountItems] = useState<Array<{id: string, x: number, y: number}>>([]);
   const [isCounting, setIsCounting] = useState(false);
+  
+  // Calibration state
+  const [isCalibrating, setIsCalibrating] = useState(false);
+  const [calibrationPoints, setCalibrationPoints] = useState<number[]>([]);
+  const [calibrationDistance, setCalibrationDistance] = useState<string>("");
+  const [calibrationUnit, setCalibrationUnit] = useState<string>("ft");
 
   const stageRef = useRef<any>(null);
 
@@ -187,8 +201,17 @@ export default function AdvancedTakeoffCanvas({
       const dy = points[i + 1] - points[i - 1];
       distance += Math.sqrt(dx * dx + dy * dy);
     }
-    return distance * calibration.scale;
-  }, [calibration.scale]);
+    
+    // Use calibration data if available, otherwise fall back to architectural scale
+    if (initialCalibration && initialCalibration.scale > 0) {
+      // Convert pixels to real units using calibration
+      return distance / initialCalibration.scale;
+    } else {
+      // Fall back to architectural scale
+      const scaleValue = parseInt(selectedArchitecturalScale);
+      return distance / scaleValue;
+    }
+  }, [selectedArchitecturalScale, initialCalibration]);
 
   const calculateArea = useCallback((points: number[]): number => {
     if (points.length < 6) return 0;
@@ -201,46 +224,76 @@ export default function AdvancedTakeoffCanvas({
       const y2 = points[2 * ((i + 1) % n) + 1];
       area += x1 * y2 - x2 * y1;
     }
-    return Math.abs(area / 2) * calibration.scale * calibration.scale;
-  }, [calibration.scale]);
+    
+    // Use calibration data if available, otherwise fall back to architectural scale
+    if (initialCalibration && initialCalibration.scale > 0) {
+      // Convert pixels to square units using calibration (squared)
+      return Math.abs(area / 2) / (initialCalibration.scale * initialCalibration.scale);
+    } else {
+      // Fall back to architectural scale
+      const scaleValue = parseInt(selectedArchitecturalScale);
+      return Math.abs(area / 2) / (scaleValue * scaleValue);
+    }
+  }, [selectedArchitecturalScale, initialCalibration]);
 
   const formatValue = useCallback((value: number, unit: string): string => {
-    if (unit === "ft") return `${value.toFixed(2)} ft`;
-    if (unit === "sq ft") return `${value.toFixed(2)} sq ft`;
+    if (unit === "ft" || unit === "m") return `${value.toFixed(2)} ${unit}`;
+    if (unit === "sq ft" || unit === "sq m") return `${value.toFixed(2)} ${unit}`;
     if (unit === "count") return `${Math.round(value)} ea`;
     return `${value.toFixed(2)} ${unit}`;
   }, []);
 
+  // Helper function to convert screen coordinates to canvas coordinates
+  const getCanvasPosition = useCallback((stage: any, pos: { x: number; y: number }) => {
+    const transform = stage.getAbsoluteTransform().copy();
+    transform.invert();
+    return transform.point(pos);
+  }, []);
+
+  // Helper function to constrain line to horizontal or vertical when shift is pressed
+  const constrainToAxis = useCallback((startX: number, startY: number, currentX: number, currentY: number) => {
+    const deltaX = Math.abs(currentX - startX);
+    const deltaY = Math.abs(currentY - startY);
+    
+    // If shift is pressed, constrain to the axis with the larger delta
+    if (isShiftPressed) {
+      if (deltaX > deltaY) {
+        // Constrain to horizontal line
+        return { x: currentX, y: startY };
+      } else {
+        // Constrain to vertical line
+        return { x: startX, y: currentY };
+      }
+    }
+    
+    return { x: currentX, y: currentY };
+  }, [isShiftPressed]);
+
   // Mouse event handlers
   const handleMouseDown = (e: any) => {
-    const pos = e.target.getStage().getPointerPosition();
+    const stage = e.target.getStage();
+    const pos = stage.getPointerPosition();
     if (!pos) return;
-
-    if (currentTool === "calibrate") {
-      if (calibrationPoints.length === 0) {
-        // First click - set first point
-        setCalibrationPoints([pos.x, pos.y]);
-      } else if (calibrationPoints.length === 2) {
-        // Second click - calculate distance and show input
-        const pixelDist = Math.sqrt(
-          Math.pow(pos.x - calibrationPoints[0], 2) + 
-          Math.pow(pos.y - calibrationPoints[1], 2)
-        );
-        setCalibration(prev => ({ ...prev, pixelDistance: pixelDist }));
-        setShowCalibrationModal(true);
-      }
-      return;
-    }
+    
+    // Convert screen coordinates to canvas coordinates (accounting for zoom)
+    const canvasPos = getCanvasPosition(stage, pos);
 
     if (currentTool === "text") {
-      setTextPosition([pos.x, pos.y]);
+      setTextPosition([canvasPos.x, canvasPos.y]);
       setIsAddingText(true);
       return;
     }
 
     if (currentTool === "count") {
-      const newItem = { id: Date.now().toString(), x: pos.x, y: pos.y };
+      const newItem = { id: Date.now().toString(), x: canvasPos.x, y: canvasPos.y };
       setCountItems(prev => [...prev, newItem]);
+      return;
+    }
+
+    if (currentTool === "calibrate") {
+      setIsCalibrating(true);
+      setCalibrationPoints([canvasPos.x, canvasPos.y]);
+      setPreviewPoint([canvasPos.x, canvasPos.y]);
       return;
     }
 
@@ -251,60 +304,109 @@ export default function AdvancedTakeoffCanvas({
 
     // Start drawing for line and area tools
     setIsDrawing(true);
-    setCurrentPoints([pos.x, pos.y]);
+    setCurrentPoints([canvasPos.x, canvasPos.y]);
+    setPreviewPoint([canvasPos.x, canvasPos.y]);
   };
 
   const handleMouseMove = (e: any) => {
-    const pos = e.target.getStage().getPointerPosition();
+    const stage = e.target.getStage();
+    const pos = stage.getPointerPosition();
     if (!pos) return;
-
-    if (currentTool === "calibrate" && calibrationPoints.length === 2) {
-      setPreviewPoint([calibrationPoints[0], calibrationPoints[1], pos.x, pos.y]);
-      return;
-    }
+    
+    // Convert screen coordinates to canvas coordinates (accounting for zoom)
+    const canvasPos = getCanvasPosition(stage, pos);
 
     if (isDrawing && currentPoints.length > 0) {
-      setPreviewPoint([...currentPoints, pos.x, pos.y]);
+      // For area tool, add points as user drags
+      if (currentTool === "area") {
+        // If shift is pressed, constrain the line to horizontal or vertical
+        const constrainedPos = constrainToAxis(
+          currentPoints[currentPoints.length - 2], 
+          currentPoints[currentPoints.length - 1], 
+          canvasPos.x, 
+          canvasPos.y
+        );
+        
+        const newPoints = [...currentPoints, constrainedPos.x, constrainedPos.y];
+        setCurrentPoints(newPoints);
+        setPreviewPoint(newPoints);
+      } else {
+        // For line tool, just show preview
+        setPreviewPoint([...currentPoints, canvasPos.x, canvasPos.y]);
+      }
+    }
+
+    if (isCalibrating && calibrationPoints.length > 0) {
+      // Show calibration line preview
+      setPreviewPoint([...calibrationPoints, canvasPos.x, canvasPos.y]);
     }
   };
 
   const handleMouseUp = (e: any) => {
+    const stage = e.target.getStage();
+    const pos = stage.getPointerPosition();
+    if (!pos) return;
+    
+    // Convert screen coordinates to canvas coordinates (accounting for zoom)
+    const canvasPos = getCanvasPosition(stage, pos);
+
+    if (isCalibrating && calibrationPoints.length > 0) {
+      // Complete calibration line
+      const finalCalibrationPoints = [...calibrationPoints, canvasPos.x, canvasPos.y];
+      setCalibrationPoints(finalCalibrationPoints);
+      setPreviewPoint(finalCalibrationPoints);
+      return;
+    }
+
     if (!isDrawing) return;
 
-    const pos = e.target.getStage().getPointerPosition();
-    if (!pos || currentPoints.length === 0) return;
+    if (currentPoints.length === 0) return;
 
-    const finalPoints = [...currentPoints, pos.x, pos.y];
+    let finalPoints: number[];
+
+    if (currentTool === "line") {
+      // For line tool, just add the end point
+      finalPoints = [...currentPoints, canvasPos.x, canvasPos.y];
+    } else if (currentTool === "area") {
+      // For area tool, use the accumulated points
+      finalPoints = [...currentPoints];
+    } else {
+      finalPoints = [...currentPoints, canvasPos.x, canvasPos.y];
+    }
 
     if (currentTool === "line" && finalPoints.length >= 4) {
       const distance = calculateDistance(finalPoints);
+      const unit = initialCalibration?.unit || "ft";
       const newMeasurement: Omit<TakeoffMeasurement, 'id' | 'createdAt'> = {
         type: "line",
         points: finalPoints,
         label: `Line ${measurements.filter(m => m.type === "line").length + 1}`,
         value: distance,
-        unit: "ft",
+        unit: unit,
         division: "03",
         subcategory: "Foundation",
         layer: currentLayer,
         color: TOOL_COLORS.line
       };
+      console.log("Creating line measurement:", newMeasurement);
       onAddMeasurement?.(newMeasurement);
     }
 
     if (currentTool === "area" && finalPoints.length >= 6) {
       const area = calculateArea(finalPoints);
+      const unit = initialCalibration?.unit ? `sq ${initialCalibration.unit}` : "sq ft";
       const newMeasurement: Omit<TakeoffMeasurement, 'id' | 'createdAt'> = {
         type: "area",
         points: finalPoints,
         label: `Area ${measurements.filter(m => m.type === "area").length + 1}`,
         value: area,
-        unit: "sq ft",
+        unit: unit,
         division: "03",
         subcategory: "Foundation",
         layer: currentLayer,
         color: TOOL_COLORS.area
       };
+      console.log("Creating area measurement:", newMeasurement);
       onAddMeasurement?.(newMeasurement);
     }
 
@@ -313,17 +415,42 @@ export default function AdvancedTakeoffCanvas({
     setPreviewPoint([]);
   };
 
+  const handleCalibrationComplete = () => {
+    if (calibrationPoints.length >= 4 && calibrationDistance) {
+      const pixelDistance = Math.sqrt(
+        Math.pow(calibrationPoints[2] - calibrationPoints[0], 2) +
+        Math.pow(calibrationPoints[3] - calibrationPoints[1], 2)
+      );
+      const realDistance = parseFloat(calibrationDistance);
+      const scale = pixelDistance / realDistance;
+      
+      const calibrationData: CalibrationData = {
+        pixelDistance,
+        realDistance,
+        unit: calibrationUnit,
+        scale
+      };
+      
+      onSaveCalibration?.(calibrationData);
+      setIsCalibrating(false);
+      setCalibrationPoints([]);
+      setCalibrationDistance("");
+      setCurrentTool("select");
+    }
+  };
+
   const handleDoubleClick = (e: any) => {
     if (currentTool === "area" && isDrawing) {
       const finalPoints = [...currentPoints];
       if (finalPoints.length >= 6) {
         const area = calculateArea(finalPoints);
+        const unit = initialCalibration?.unit ? `sq ${initialCalibration.unit}` : "sq ft";
         const newMeasurement: Omit<TakeoffMeasurement, 'id' | 'createdAt'> = {
           type: "area",
           points: finalPoints,
           label: `Area ${measurements.filter(m => m.type === "area").length + 1}`,
           value: area,
-          unit: "sq ft",
+          unit: unit,
           division: "03",
           subcategory: "Foundation",
           layer: currentLayer,
@@ -337,46 +464,59 @@ export default function AdvancedTakeoffCanvas({
     }
   };
 
-  // Toolbar actions
-  const handleZoomIn = () => setScale(prev => Math.min(prev * 1.2, 5));
-  const handleZoomOut = () => setScale(prev => Math.max(prev / 1.2, 0.1));
-  const handleResetZoom = () => setScale(1);
+  // Mouse wheel zoom handler
+  const handleWheel = (e: any) => {
+    e.evt.preventDefault();
+    const scaleBy = 1.1;
+    const oldScale = scale;
+    const stage = e.target.getStage();
+    const pointer = stage.getPointerPosition();
+    
+    if (!pointer) return;
 
-  const handleCalibrationComplete = (realDistance: number) => {
-    if (calibration.pixelDistance > 0) {
-      const newScale = realDistance / calibration.pixelDistance;
-      const newCalibration = { 
-        ...calibration, 
-        realDistance, 
-        scale: newScale 
-      };
-      setCalibration(newCalibration);
-      setShowCalibrationModal(false);
-      setCalibrationInput("");
-      setIsCalibrating(false);
-      setCurrentTool("select");
-      setCalibrationPoints([]);
-      
-      // Save calibration data to parent component
-      if (onSaveCalibration) {
-        onSaveCalibration(newCalibration);
-      }
+    const mousePointTo = {
+      x: (pointer.x - stage.x()) / oldScale,
+      y: (pointer.y - stage.y()) / oldScale,
+    };
+
+    const newScale = e.evt.deltaY > 0 ? oldScale / scaleBy : oldScale * scaleBy;
+    const clampedScale = Math.max(0.1, Math.min(5, newScale));
+    
+    const newPos = {
+      x: pointer.x - mousePointTo.x * clampedScale,
+      y: pointer.y - mousePointTo.y * clampedScale,
+    };
+    
+    setScale(clampedScale);
+    setStageX(newPos.x);
+    setStageY(newPos.y);
+  };
+
+  // Keyboard event handlers for shift key
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    if (e.key === 'Shift') {
+      setIsShiftPressed(true);
     }
-  };
+  }, []);
 
-  const handleCalibrate = () => {
-    setIsCalibrating(true);
-    setCurrentTool("calibrate");
-    setCalibrationPoints([]);
-  };
+  const handleKeyUp = useCallback((e: KeyboardEvent) => {
+    if (e.key === 'Shift') {
+      setIsShiftPressed(false);
+    }
+  }, []);
 
-  const handleCalibrationCancel = () => {
-    setIsCalibrating(false);
-    setCurrentTool("select");
-    setCalibrationPoints([]);
-    setShowCalibrationModal(false);
-    setCalibrationInput("");
-  };
+  // Add keyboard event listeners
+  useEffect(() => {
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [handleKeyDown, handleKeyUp]);
+
+
 
   const handleAddText = () => {
     if (textInput.trim() && textPosition.length === 2) {
@@ -397,7 +537,21 @@ export default function AdvancedTakeoffCanvas({
     }
   };
 
+  const resetZoom = () => {
+    setScale(1);
+    setStageX(0);
+    setStageY(0);
+  };
+
   const selectedMeasurement = measurements.find(m => m.id === selectedMeasurementId);
+
+  // Debug logging
+  console.log("Canvas received measurements:", measurements.length);
+  console.log("Measurements data:", measurements);
+  console.log("Current tool:", currentTool);
+  console.log("Is drawing:", isDrawing);
+  console.log("Current points:", currentPoints);
+  console.log("Preview points:", previewPoint);
 
   return (
     <div className="flex h-full">
@@ -436,7 +590,7 @@ export default function AdvancedTakeoffCanvas({
           onClick={() => setCurrentTool("count")}
           title="Count Items"
         >
-          <Circle className="h-4 w-4" />
+          <CircleIcon className="h-4 w-4" />
         </Button>
         
         <Button
@@ -451,83 +605,95 @@ export default function AdvancedTakeoffCanvas({
         <div className="border-t border-gray-300 w-8 my-2" />
         
         <Button
-          variant="ghost"
+          variant={currentTool === "calibrate" ? "default" : "ghost"}
           size="sm"
-          onClick={handleZoomIn}
-          title="Zoom In"
+          onClick={() => setCurrentTool("calibrate")}
+          title="Calibrate Scale"
         >
-          <ZoomIn className="h-4 w-4" />
+          <Ruler className="h-4 w-4" />
         </Button>
         
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={handleZoomOut}
-          title="Zoom Out"
-        >
-          <ZoomOut className="h-4 w-4" />
-        </Button>
-        
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={handleResetZoom}
-          title="Reset Zoom"
-        >
-          <RotateCcw className="h-4 w-4" />
-        </Button>
-        
-        <div className="border-t border-gray-300 w-8 my-2" />
-        
-                 <Button
-           variant="ghost"
-           size="sm"
-           onClick={handleCalibrate}
-           title="Calibrate Scale"
-         >
-           <Settings className="h-4 w-4" />
-         </Button>
+                 
       </div>
 
       {/* Main Canvas */}
       <div className="flex-1 flex flex-col">
         <div className="bg-white border-b p-2 flex items-center justify-between">
-                     <div className="flex items-center space-x-4">
-             <span className="text-sm font-medium">Zoom: {scale.toFixed(2)}x</span>
-             {calibration.scale !== 1 && (
-               <div className="flex items-center space-x-2">
-                 <span className="text-sm text-gray-600">
-                   Scale: 1 {calibration.unit} = {calibration.scale.toFixed(2)} pixels
+                                                        <div className="flex items-center space-x-4">
+               <span className="text-sm font-medium">Zoom: {scale.toFixed(2)}x</span>
+               {isDrawing && (
+                 <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
+                   Drawing {currentTool}...
                  </span>
-                 <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">
-                   Calibrated
-                 </span>
-               </div>
-             )}
-             {calibration.scale === 1 && (
-               <span className="px-2 py-1 bg-yellow-100 text-yellow-800 text-xs rounded-full">
-                   Not Calibrated
-                 </span>
-             )}
-           </div>
+               )}
+                               {isCalibrating && (
+                  <span className="px-2 py-1 bg-orange-100 text-orange-800 text-xs rounded-full">
+                    Calibrating scale...
+                  </span>
+                )}
+                {isShiftPressed && currentTool === "area" && (
+                  <span className="px-2 py-1 bg-purple-100 text-purple-800 text-xs rounded-full">
+                    Shift: Straight lines
+                  </span>
+                )}
+                <div className="flex items-center space-x-2">
+                  <span className="text-sm text-gray-600">
+                    Scale: {ARCHITECTURAL_SCALES.find(s => s.value.toString() === selectedArchitecturalScale)?.label || "1\" = 60'"}
+                  </span>
+                  <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">
+                    Set
+                  </span>
+                </div>
+             </div>
           
-          <div className="flex items-center space-x-2">
-            <Button
-              variant={showLayers ? "default" : "ghost"}
-              size="sm"
-              onClick={() => setShowLayers(!showLayers)}
-            >
-              <Layers className="h-4 w-4 mr-1" />
-              Layers
-            </Button>
-            <Button
-              variant={showProperties ? "default" : "ghost"}
-              size="sm"
-              onClick={() => setShowProperties(!showProperties)}
-            >
-              Properties
-            </Button>
-          </div>
+                     <div className="flex items-center space-x-2">
+             <Button
+               variant="ghost"
+               size="sm"
+               onClick={() => {
+                 const newScale = Math.min(5, scale * 1.2);
+                 setScale(newScale);
+               }}
+               title="Zoom In"
+             >
+               <ZoomIn className="h-4 w-4" />
+             </Button>
+             <Button
+               variant="ghost"
+               size="sm"
+               onClick={() => {
+                 const newScale = Math.max(0.1, scale / 1.2);
+                 setScale(newScale);
+               }}
+               title="Zoom Out"
+             >
+               <ZoomOut className="h-4 w-4" />
+             </Button>
+             <Button
+               variant="ghost"
+               size="sm"
+               onClick={resetZoom}
+               title="Reset Zoom"
+             >
+               <RotateCcw className="h-4 w-4" />
+             </Button>
+             <div className="w-px h-6 bg-gray-300" />
+             <Button
+               variant={showLayers ? "default" : "ghost"}
+               size="sm"
+               onClick={() => setShowLayers(!showLayers)}
+             >
+               <Layers className="h-4 w-4 mr-1" />
+               Layers
+             </Button>
+             <Button
+               variant={showProperties ? "default" : "ghost"}
+               size="sm"
+               onClick={() => setShowProperties(!showProperties)}
+             >
+               Properties
+             </Button>
+           </div>
         </div>
 
         <div className="flex-1 relative">
@@ -578,16 +744,19 @@ export default function AdvancedTakeoffCanvas({
             </div>
           )}
           
-          <Stage
+                               <Stage
             ref={stageRef}
             width={width}
             height={height}
+            x={stageX}
+            y={stageY}
             scaleX={scale}
             scaleY={scale}
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
             onDblClick={handleDoubleClick}
+            onWheel={handleWheel}
             style={{ 
               background: "#f8fafc",
               cursor: currentTool === "select" ? "default" : "crosshair"
@@ -628,27 +797,38 @@ export default function AdvancedTakeoffCanvas({
               {/* Existing measurements */}
               {measurements.map((measurement) => (
                 <Group key={measurement.id}>
-                  {measurement.type === "line" && (
-                    <Line
-                      points={measurement.points}
-                      stroke={selectedMeasurementId === measurement.id ? "#f59e0b" : measurement.color}
-                      strokeWidth={selectedMeasurementId === measurement.id ? 4 : 2}
-                      tension={0.5}
-                      lineCap="round"
-                      onClick={() => onSelectMeasurement?.(measurement.id)}
-                    />
-                  )}
+                                     {measurement.type === "line" && (
+                     <Line
+                       points={measurement.points}
+                       stroke={selectedMeasurementId === measurement.id ? "#f59e0b" : measurement.color}
+                       strokeWidth={selectedMeasurementId === measurement.id ? 6 : 3}
+                       tension={0.5}
+                       lineCap="round"
+                       lineJoin="round"
+                       shadowColor="rgba(0,0,0,0.3)"
+                       shadowBlur={2}
+                       shadowOffset={{ x: 1, y: 1 }}
+                       shadowOpacity={0.5}
+                       onClick={() => onSelectMeasurement?.(measurement.id)}
+                     />
+                   )}
                   
-                  {measurement.type === "area" && (
-                    <Line
-                      points={measurement.points}
-                      stroke={selectedMeasurementId === measurement.id ? "#f59e0b" : measurement.color}
-                      strokeWidth={selectedMeasurementId === measurement.id ? 4 : 2}
-                      closed
-                      fill={`${measurement.color}22`}
-                      onClick={() => onSelectMeasurement?.(measurement.id)}
-                    />
-                  )}
+                                     {measurement.type === "area" && (
+                     <Line
+                       points={measurement.points}
+                       stroke={selectedMeasurementId === measurement.id ? "#f59e0b" : measurement.color}
+                       strokeWidth={selectedMeasurementId === measurement.id ? 6 : 3}
+                       closed
+                       fill={`${measurement.color}33`}
+                       lineCap="round"
+                       lineJoin="round"
+                       shadowColor="rgba(0,0,0,0.3)"
+                       shadowBlur={2}
+                       shadowOffset={{ x: 1, y: 1 }}
+                       shadowOpacity={0.5}
+                       onClick={() => onSelectMeasurement?.(measurement.id)}
+                     />
+                   )}
                   
                   {measurement.type === "text" && (
                     <Text
@@ -680,27 +860,24 @@ export default function AdvancedTakeoffCanvas({
                 </Group>
               ))}
 
-              {/* Current drawing preview */}
-              {isDrawing && previewPoint.length > 0 && (
-                <Line
-                  points={previewPoint}
-                  stroke={TOOL_COLORS[currentTool as keyof typeof TOOL_COLORS]}
-                  strokeWidth={2}
-                  dash={[5, 5]}
-                  tension={0.5}
-                  lineCap="round"
-                />
-              )}
+                             {/* Current drawing preview */}
+               {isDrawing && previewPoint.length > 0 && (
+                 <Line
+                   points={previewPoint}
+                   stroke={TOOL_COLORS[currentTool as keyof typeof TOOL_COLORS]}
+                   strokeWidth={4}
+                   dash={[8, 4]}
+                   tension={0.5}
+                   lineCap="round"
+                   lineJoin="round"
+                   shadowColor="rgba(0,0,0,0.3)"
+                   shadowBlur={3}
+                   shadowOffset={{ x: 1, y: 1 }}
+                   shadowOpacity={0.6}
+                 />
+               )}
 
-              {/* Calibration line */}
-              {isCalibrating && calibrationPoints.length === 2 && previewPoint.length === 4 && (
-                <Line
-                  points={previewPoint}
-                  stroke="#ef4444"
-                  strokeWidth={3}
-                  lineCap="round"
-                />
-              )}
+              
 
               {/* Count items */}
               {countItems.map((item) => (
@@ -719,23 +896,53 @@ export default function AdvancedTakeoffCanvas({
         </div>
       </div>
 
-      {/* Sidebar */}
-      <div className="w-80 bg-gray-50 border-l flex flex-col">
-        {showLayers && (
-          <div className="p-4 border-b">
-            <h3 className="font-semibold mb-3">Layers</h3>
-            <Select value={currentLayer} onValueChange={setCurrentLayer}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {LAYERS.map((layer) => (
-                  <SelectItem key={layer} value={layer}>
-                    {layer}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+             {/* Sidebar */}
+       <div className="w-80 bg-gray-50 border-l flex flex-col">
+         {/* Scale Selector */}
+         <div className="p-4 border-b">
+           <h3 className="font-semibold mb-3">Drawing Scale</h3>
+           <Select value={selectedArchitecturalScale} onValueChange={setSelectedArchitecturalScale}>
+             <SelectTrigger>
+               <SelectValue />
+             </SelectTrigger>
+             <SelectContent>
+               {ARCHITECTURAL_SCALES.map((scale) => (
+                 <SelectItem key={scale.value} value={scale.value.toString()}>
+                   <div className="flex flex-col">
+                     <span className="font-medium">{scale.label}</span>
+                     <span className="text-xs text-gray-500">{scale.description}</span>
+                   </div>
+                 </SelectItem>
+               ))}
+             </SelectContent>
+           </Select>
+                       <p className="text-xs text-gray-500 mt-2">
+              Select the scale used in your architectural drawings
+            </p>
+            {initialCalibration && (
+              <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded">
+                <p className="text-xs text-green-700">
+                  <strong>Calibrated:</strong> {initialCalibration.realDistance} {initialCalibration.unit} = {initialCalibration.pixelDistance.toFixed(0)} pixels
+                </p>
+              </div>
+            )}
+         </div>
+
+         {showLayers && (
+           <div className="p-4 border-b">
+             <h3 className="font-semibold mb-3">Layers</h3>
+             <Select value={currentLayer} onValueChange={setCurrentLayer}>
+               <SelectTrigger>
+                 <SelectValue />
+               </SelectTrigger>
+               <SelectContent>
+                 {LAYERS.map((layer) => (
+                   <SelectItem key={layer} value={layer}>
+                     {layer}
+                   </SelectItem>
+                 ))}
+               </SelectContent>
+             </Select>
             
             <div className="mt-3 space-y-1">
               {LAYERS.map((layer) => (
@@ -808,69 +1015,42 @@ export default function AdvancedTakeoffCanvas({
           </div>
         )}
 
-                 {/* Calibration panel */}
-         {(isCalibrating || showCalibrationModal) && (
-           <div className="p-4 border-b">
-             <h3 className="font-semibold mb-3">Calibration</h3>
-             <div className="space-y-3">
-               {calibrationPoints.length === 0 && (
-                 <div className="text-center p-4 bg-blue-50 rounded-lg">
-                   <p className="text-sm text-blue-700 mb-2">Step 1: Click first point</p>
-                   <p className="text-xs text-blue-600">Click on a known reference point on your plan</p>
-                 </div>
-               )}
-               
-               {calibrationPoints.length === 2 && !showCalibrationModal && (
-                 <div className="text-center p-4 bg-green-50 rounded-lg">
-                   <p className="text-sm text-green-700 mb-2">Step 2: Click second point</p>
-                   <p className="text-xs text-green-600">Click on another point to complete the measurement</p>
-                 </div>
-               )}
-               
-               {showCalibrationModal && calibration.pixelDistance > 0 && (
-                 <div className="space-y-3">
-                   <div className="p-3 bg-gray-50 rounded">
-                     <p className="text-sm font-medium">Pixel Distance: {calibration.pixelDistance.toFixed(1)} px</p>
-                   </div>
-                   
-                   <div>
-                     <Label>Real Distance ({calibration.unit})</Label>
-                     <Input
-                       type="number"
-                       step="0.01"
-                       placeholder="Enter known distance"
-                       value={calibrationInput}
-                       onChange={(e) => setCalibrationInput(e.target.value)}
-                       onKeyPress={(e) => e.key === 'Enter' && handleCalibrationComplete(parseFloat(calibrationInput))}
-                     />
-                   </div>
-                   
-                   <div className="flex space-x-2">
-                     <Button 
-                       onClick={() => handleCalibrationComplete(parseFloat(calibrationInput))}
-                       disabled={!calibrationInput || isNaN(parseFloat(calibrationInput))}
-                       size="sm"
-                     >
-                       Set Scale
-                     </Button>
-                     <Button 
-                       variant="outline" 
-                       onClick={handleCalibrationCancel}
-                       size="sm"
-                     >
-                       Cancel
-                     </Button>
-                   </div>
-                 </div>
-               )}
-               
-               <div className="text-xs text-gray-500">
-                 <p><strong>Tip:</strong> Use a known dimension like a wall length or room width</p>
-                 <p><strong>Example:</strong> If a wall measures 20 feet in real life, enter "20"</p>
-               </div>
-             </div>
-           </div>
-         )}
+        
+
+        {/* Calibration panel */}
+        {isCalibrating && (
+          <div className="p-4 border-b">
+            <h3 className="font-semibold mb-3">Calibrate Scale</h3>
+            <div className="space-y-3">
+              <div>
+                <Label>Known Distance</Label>
+                <Input
+                  value={calibrationDistance}
+                  onChange={(e) => setCalibrationDistance(e.target.value)}
+                  placeholder="Enter known distance..."
+                  type="number"
+                />
+              </div>
+              <div>
+                <Label>Unit</Label>
+                <Select value={calibrationUnit} onValueChange={setCalibrationUnit}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ft">Feet</SelectItem>
+                    <SelectItem value="m">Meters</SelectItem>
+                    <SelectItem value="in">Inches</SelectItem>
+                    <SelectItem value="cm">Centimeters</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button onClick={handleCalibrationComplete} size="sm">
+                Set Calibration
+              </Button>
+            </div>
+          </div>
+        )}
 
         {/* Text input panel */}
         {isAddingText && (
