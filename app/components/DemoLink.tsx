@@ -4,8 +4,15 @@ import Link from 'next/link';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Ruler, Square, Settings, ZoomIn } from "lucide-react";
+import { useAuth } from "@/app/contexts/AuthContext";
 
 export default function DemoLink() {
+  const { user } = useAuth();
+
+  // Don't render the demo link if user is signed in
+  if (user) {
+    return null;
+  }
   return (
     <Card className="w-full max-w-md mx-auto">
       <CardHeader className="text-center">
