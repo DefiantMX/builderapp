@@ -41,18 +41,19 @@ model Session {
 }
 
 model User {
-  id            String    @id @default(cuid())
-  name          String?
-  email         String?   @unique
-  emailVerified DateTime?
-  image         String?
-  password      String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  accounts      Account[]
-  sessions      Session[]
-  projects      Project[]
-  teamMembers   TeamMember[] // Link to TeamMembers if converted from one
+  id              String           @id @default(cuid())
+  name            String?
+  email           String?          @unique
+  emailVerified   DateTime?
+  image           String?
+  password        String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  accounts        Account[]
+  sessions        Session[]
+  projects        Project[]
+  teamMembers     TeamMember[] // Link to TeamMembers if converted from one
+  biddingProjects BiddingProject[]
 }
 
 model VerificationToken {
@@ -78,29 +79,29 @@ model Invitation {
 }
 
 model Project {
-  id          String    @id @default(cuid())
+  id          String   @id @default(cuid())
   name        String
   description String?
   userId      String
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
   // Relation to User model
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   // Relations to other models
-  tasks       Task[]
-  plans       Plan[]
-  events      Event[]
-  bids        Bid[]
-  takeoffs    Takeoff[]
-  invoices    Invoice[]
-  budget      Budget?
-  documents   Document[]
-  dailyLogs   DailyLog[]
-  draws       Draw[]
+  tasks        Task[]
+  plans        Plan[]
+  events       Event[]
+  bids         Bid[]
+  takeoffs     Takeoff[]
+  invoices     Invoice[]
+  budget       Budget?
+  documents    Document[]
+  dailyLogs    DailyLog[]
+  draws        Draw[]
   changeOrders ChangeOrder[]
-  invitations Invitation[]
+  invitations  Invitation[]
 }
 
 model Task {
@@ -116,56 +117,56 @@ model Task {
 }
 
 model Plan {
-  id           String        @id @default(cuid())
-  title        String
-  description  String?
-  fileUrl      String
-  fileType     String
+  id              String        @id @default(cuid())
+  title           String
+  description     String?
+  fileUrl         String
+  fileType        String
   // Calibration data
-  pixelDistance Float?      // Pixel distance for calibration
-  realDistance   Float?     // Real-world distance for calibration
-  calibrationUnit String?   // Unit for calibration (ft, m, etc.)
-  scale          Float?     // Calculated scale (pixels per unit)
-  project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  projectId    String
-  measurements Measurement[]
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  pixelDistance   Float? // Pixel distance for calibration
+  realDistance    Float? // Real-world distance for calibration
+  calibrationUnit String? // Unit for calibration (ft, m, etc.)
+  scale           Float? // Calculated scale (pixels per unit)
+  project         Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId       String
+  measurements    Measurement[]
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 }
 
 model Measurement {
   id           String   @id @default(cuid())
   planId       String
-  type         String   // "line", "area", "count", "text"
+  type         String // "line", "area", "count", "text"
   label        String
   value        Float
-  unit         String   // "ft", "sq ft", "count", "text"
-  points       String   // JSON string of points array
-  division     String?  // CSI division (e.g., "03", "04", etc.)
-  subcategory  String?  // Subcategory within division
-  layer        String?  // Layer name for organization
-  color        String?  // Color hex code for display
-  notes        String?  // Additional notes
-  materialType String?  // Material type (e.g., "siding", "concrete", etc.)
-  pricePerUnit Float?   // Price per unit (e.g., price per square foot)
+  unit         String // "ft", "sq ft", "count", "text"
+  points       String // JSON string of points array
+  division     String? // CSI division (e.g., "03", "04", etc.)
+  subcategory  String? // Subcategory within division
+  layer        String? // Layer name for organization
+  color        String? // Color hex code for display
+  notes        String? // Additional notes
+  materialType String? // Material type (e.g., "siding", "concrete", etc.)
+  pricePerUnit Float? // Price per unit (e.g., price per square foot)
   plan         Plan     @relation(fields: [planId], references: [id], onDelete: Cascade)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }
 
 model Event {
-  id          String    @id @default(cuid())
-  title       String
-  description String?
-  startDate   DateTime
-  endDate     DateTime?
-  status      String    @default("Scheduled")
-  percentComplete Int    @default(0)
-  priority    Int       @default(0)
-  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  projectId   String
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id              String    @id @default(cuid())
+  title           String
+  description     String?
+  startDate       DateTime
+  endDate         DateTime?
+  status          String    @default("Scheduled")
+  percentComplete Int       @default(0)
+  priority        Int       @default(0)
+  project         Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId       String
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   @@index([projectId])
 }
@@ -177,7 +178,7 @@ model Bid {
   contractorName  String
   contractorEmail String
   amount          Float
-  division        String    // Added division field
+  division        String // Added division field
   status          String    @default("Pending") // Pending, Accepted, Rejected
   submissionDate  DateTime  @default(now())
   validUntil      DateTime?
@@ -192,7 +193,7 @@ model Takeoff {
   id          String        @id @default(cuid())
   title       String
   description String?
-  category    String        // e.g., "Concrete", "Electrical", "Plumbing"
+  category    String // e.g., "Concrete", "Electrical", "Plumbing"
   status      String        @default("In Progress") // In Progress, Completed, Verified
   items       TakeoffItem[]
   project     Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -205,10 +206,10 @@ model TakeoffItem {
   id          String   @id @default(cuid())
   description String
   quantity    Float
-  unit        String   // e.g., "SF", "LF", "EA", "CY"
+  unit        String // e.g., "SF", "LF", "EA", "CY"
   unitPrice   Float?
   notes       String?
-  location    String?  // e.g., "First Floor", "Building A", "Room 101"
+  location    String? // e.g., "First Floor", "Building A", "Room 101"
   takeoff     Takeoff  @relation(fields: [takeoffId], references: [id], onDelete: Cascade)
   takeoffId   String
   createdAt   DateTime @default(now())
@@ -226,40 +227,51 @@ model Budget {
 }
 
 model DivisionBudget {
-  id          String   @id @default(cuid())
-  division    String
-  amount      Float
-  description String?
-  budgetId    String
-  budget      Budget   @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  id            String              @id @default(cuid())
+  division      String
+  amount        Float
+  description   String?
+  budgetId      String
+  budget        Budget              @relation(fields: [budgetId], references: [id], onDelete: Cascade)
   subcategories SubcategoryBudget[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
 }
 
 model SubcategoryBudget {
-  id          String   @id @default(cuid())
-  subcategory String
-  amount      Float
-  description String?
+  id               String         @id @default(cuid())
+  subcategory      String
+  amount           Float
+  description      String?
   divisionBudgetId String
-  divisionBudget DivisionBudget @relation(fields: [divisionBudgetId], references: [id], onDelete: Cascade)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  divisionBudget   DivisionBudget @relation(fields: [divisionBudgetId], references: [id], onDelete: Cascade)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
 }
 
 model Invoice {
-  id          String   @id @default(cuid())
-  division    String
-  vendor      String
-  amount      Float
-  date        DateTime
-  description String?
-  projectId   String
-  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  draws       Draw[]   @relation("DrawInvoices")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            String        @id @default(cuid())
+  invoiceNumber String?
+  division      String
+  vendor        String
+  amount        Float
+  date          DateTime
+  dueDate       DateTime?
+  paymentDate   DateTime?
+  status        InvoiceStatus @default(UNPAID)
+  description   String?
+  projectId     String
+  project       Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  draws         Draw[]        @relation("DrawInvoices")
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+}
+
+enum InvoiceStatus {
+  UNPAID
+  PAID
+  OVERDUE
+  PARTIAL
 }
 
 model Document {
@@ -268,7 +280,7 @@ model Document {
   description String?
   fileUrl     String
   fileType    String   @default("application/pdf")
-  category    String   // e.g., "Contract", "Permit", "Insurance", etc.
+  category    String // e.g., "Contract", "Permit", "Insurance", etc.
   status      String   @default("pending") // pending, approved, rejected
   project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   projectId   String
@@ -279,17 +291,17 @@ model Document {
 }
 
 model DailyLog {
-  id                String    @id @default(cuid())
-  date              DateTime  @default(now())
+  id                String   @id @default(cuid())
+  date              DateTime @default(now())
   content           String
   author            String
   currentConditions String
   incidentReport    String?
   imageUrl          String?
-  project           Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project           Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   projectId         String
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 }
 
 model Draw {
@@ -309,60 +321,60 @@ model Draw {
 }
 
 model ChangeOrder {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   title       String
   description String?
   amount      Float
-  status      String   @default("Pending") // Pending, Approved, Rejected
-  date        DateTime @default(now())
+  status      String    @default("Pending") // Pending, Approved, Rejected
+  date        DateTime  @default(now())
   division    String
-  reason      String?  // Reason for change order
-  approvedBy  String?  // Who approved the change order
+  reason      String? // Reason for change order
+  approvedBy  String? // Who approved the change order
   approvedAt  DateTime?
-  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   projectId   String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   @@index([projectId])
 }
 
 model MeetingMinute {
-  id          String   @id @default(cuid())
+  id          String       @id @default(cuid())
   title       String
-  date        DateTime @default(now())
+  date        DateTime     @default(now())
   content     String
   createdBy   String
   actionItems ActionItem[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
 }
 
 model ActionItem {
-  id            String   @id @default(cuid())
-  description   String
-  assignedTo    String?
-  dueDate       DateTime?
-  completed     Boolean  @default(false)
-  meetingMinute MeetingMinute @relation(fields: [meetingMinuteId], references: [id], onDelete: Cascade)
+  id              String        @id @default(cuid())
+  description     String
+  assignedTo      String?
+  dueDate         DateTime?
+  completed       Boolean       @default(false)
+  meetingMinute   MeetingMinute @relation(fields: [meetingMinuteId], references: [id], onDelete: Cascade)
   meetingMinuteId String
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 }
 
 model TeamMember {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   name        String
-  email       String   @unique
-  role        String   // Admin, Member, Guest, etc.
-  joinedAt    DateTime @default(now())
-  status      String   @default("active") // active, invited, pending, etc.
-  inviteToken String?  @unique
+  email       String    @unique
+  role        String // Admin, Member, Guest, etc.
+  joinedAt    DateTime  @default(now())
+  status      String    @default("active") // active, invited, pending, etc.
+  inviteToken String?   @unique
   invitedAt   DateTime?
-  permissions Json?    // e.g. ["projects:view", "finances:edit", ...]
-  userId      String?  // Link to User account if converted
-  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
-  isConverted Boolean  @default(false) // Track if converted to user
+  permissions Json? // e.g. ["projects:view", "finances:edit", ...]
+  userId      String? // Link to User account if converted
+  user        User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  isConverted Boolean   @default(false) // Track if converted to user
 
   @@unique([userId])
 }
@@ -374,4 +386,107 @@ model Announcement {
   createdBy String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model BiddingProject {
+  id             String          @id @default(cuid())
+  name           String
+  description    String?
+  projectNumber  String? // Optional project number/code
+  location       String?
+  bidDueDate     DateTime?
+  status         String          @default("Active") // Active, Closed, Awarded, Completed
+  archivedAt     DateTime?       // When project was archived
+  userId         String
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bidders        Bidder[]
+  bidSubmissions BidSubmission[]
+  biddingPlans   BiddingPlan[]
+  bidInvitations BidInvitation[]
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@index([userId])
+  @@index([archivedAt])
+}
+
+model Bidder {
+  id               String          @id @default(cuid())
+  companyName      String
+  contactName      String
+  email            String
+  phone            String?
+  address          String?
+  licenseNumber    String?
+  specialties      String? // Comma-separated list of specialties/divisions
+  notes            String?
+  biddingProject   BiddingProject  @relation(fields: [biddingProjectId], references: [id], onDelete: Cascade)
+  biddingProjectId String
+  bidSubmissions   BidSubmission[]
+  bidInvitations   BidInvitation[]
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  @@index([biddingProjectId])
+}
+
+model BiddingPlan {
+  id               String          @id @default(cuid())
+  title            String
+  description      String?
+  fileUrl          String
+  fileType         String          @default("application/pdf")
+  biddingProject   BiddingProject  @relation(fields: [biddingProjectId], references: [id], onDelete: Cascade)
+  biddingProjectId String
+  bidInvitations   BidInvitation[]
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  @@index([biddingProjectId])
+}
+
+model BidInvitation {
+  id               String         @id @default(cuid())
+  biddingProject   BiddingProject @relation(fields: [biddingProjectId], references: [id], onDelete: Cascade)
+  biddingProjectId String
+  bidder           Bidder         @relation(fields: [bidderId], references: [id], onDelete: Cascade)
+  bidderId         String
+  biddingPlan      BiddingPlan?   @relation(fields: [biddingPlanId], references: [id], onDelete: Cascade)
+  biddingPlanId    String?
+  sentAt           DateTime       @default(now())
+  emailSent        Boolean        @default(false)
+  emailSentAt      DateTime?
+  viewedAt         DateTime?
+  notes            String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@unique([biddingProjectId, bidderId, biddingPlanId])
+  @@index([biddingProjectId])
+  @@index([bidderId])
+}
+
+model BidSubmission {
+  id               String         @id @default(cuid())
+  biddingProject   BiddingProject @relation(fields: [biddingProjectId], references: [id], onDelete: Cascade)
+  biddingProjectId String
+  bidder           Bidder         @relation(fields: [bidderId], references: [id], onDelete: Cascade)
+  bidderId         String
+  division         String // CSI division (e.g., "03", "04", etc.)
+  amount           Float
+  description      String?
+  fileUrl          String? // Optional uploaded bid document
+  fileType         String?
+  status           String         @default("Submitted") // Submitted, Accepted, Rejected, Under Review
+  validUntil       DateTime?
+  notes            String?
+  submittedAt      DateTime       @default(now())
+  reviewedAt       DateTime?
+  reviewedBy       String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@index([biddingProjectId])
+  @@index([bidderId])
+  @@index([division])
 }

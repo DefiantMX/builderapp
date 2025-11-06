@@ -46,6 +46,12 @@ export default function Navbar() {
                 >
                   Finances
                 </Link>
+                <Link
+                  href="/bidding"
+                  className="px-3 py-2 rounded-md text-sm font-medium hover:bg-gray-700"
+                >
+                  Bidding
+                </Link>
               </div>
             )}
           </div>
