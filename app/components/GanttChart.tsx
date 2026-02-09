@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import EditEventModal from './EditEventModal'
 
-interface Event {
+export interface GanttEvent {
   id: string
   title: string
   startDate: Date | string
@@ -13,10 +13,11 @@ interface Event {
   assignee?: string
   percentComplete?: number
   priority: number
+  parentId?: string | null
 }
 
 interface GanttChartProps {
-  events: Event[]
+  events: GanttEvent[]
   projectId: string
 }
 
@@ -29,18 +30,54 @@ const COLORS = {
 
 export default function GanttChart({ events: initialEvents, projectId }: GanttChartProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const [selectedEvent, setSelectedEvent] = useState<Event | null>(null)
+  const [selectedEvent, setSelectedEvent] = useState<GanttEvent | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
-  const [events, setEvents] = useState<Event[]>(initialEvents)
+  const [events, setEvents] = useState<GanttEvent[]>(initialEvents)
+  const [collapsedParents, setCollapsedParents] = useState<Set<string>>(new Set())
+  useEffect(() => {
+    setEvents(initialEvents)
+  }, [initialEvents])
   type DragMode = 'row' | 'move' | 'resize-start' | 'resize-end'
-  const [draggedEvent, setDraggedEvent] = useState<Event | null>(null)
+  const [draggedEvent, setDraggedEvent] = useState<GanttEvent | null>(null)
   const [dragY, setDragY] = useState<number | null>(null)
   const [dragMode, setDragMode] = useState<DragMode | null>(null)
   const dragStartRef = useRef<{ x: number; y: number; startDate: Date; endDate: Date; barStartX: number; barWidth: number } | null>(null)
 
+  // Flatten hierarchy for display (parent then children, with depth)
+  const flattenedEvents = (() => {
+    const byParent = new Map<string | null, GanttEvent[]>()
+    events.forEach((e) => {
+      const key = e.parentId ?? null
+      if (!byParent.has(key)) byParent.set(key, [])
+      byParent.get(key)!.push(e)
+    })
+    const ordered = events.slice().sort((a, b) => a.priority - b.priority)
+    const result: { event: GanttEvent; depth: number }[] = []
+    function add(parentId: string | null, depth: number) {
+      const children = (byParent.get(parentId) ?? []).slice()
+      children.sort((a, b) => {
+        const aIdx = ordered.findIndex((e) => e.id === a.id)
+        const bIdx = ordered.findIndex((e) => e.id === b.id)
+        return (aIdx === -1 ? 999 : aIdx) - (bIdx === -1 ? 999 : bIdx)
+      })
+      children.forEach((ev) => {
+        const isParent = byParent.has(ev.id)
+        const isCollapsed = isParent && collapsedParents.has(ev.id)
+        result.push({ event: ev, depth })
+        if (isParent && !isCollapsed) add(ev.id, depth + 1)
+      })
+    }
+    add(null, 0)
+    return result
+  })()
+
+  const displayEvents = flattenedEvents.map(({ event }) => event)
+  const eventDepths = new Map(flattenedEvents.map(({ event, depth }) => [event.id, depth]))
+  const hasChildren = new Set(events.filter((e) => e.parentId).map((e) => e.parentId))
+
   // Store event positions and timeline scale for drag-to-resize/move
   const eventPositionsRef = useRef<Array<{
-    event: Event
+    event: GanttEvent
     x: number
     y: number
     width: number
@@ -117,15 +154,16 @@ export default function GanttChart({ events: initialEvents, projectId }: GanttCh
     const mode = dragMode
 
     if (mode === 'row' && dragY !== null) {
+      const rowHeight = 44
       const rowDiff = Math.round((y - dragY) / rowHeight)
       if (rowDiff !== 0) {
-        const oldIndex = events.findIndex(ev => ev.id === draggedEvent.id)
-        const newIndex = Math.max(0, Math.min(events.length - 1, oldIndex + rowDiff))
+        const oldIndex = displayEvents.findIndex((ev) => ev.id === draggedEvent.id)
+        const newIndex = Math.max(0, Math.min(displayEvents.length - 1, oldIndex + rowDiff))
         if (oldIndex !== newIndex) {
-          const newEvents = [...events]
-          const [movedEvent] = newEvents.splice(oldIndex, 1)
-          newEvents.splice(newIndex, 0, movedEvent)
-          setEvents(newEvents.map((ev, i) => ({ ...ev, priority: i })))
+          const reordered = [...displayEvents]
+          const [moved] = reordered.splice(oldIndex, 1)
+          reordered.splice(newIndex, 0, moved)
+          setEvents(reordered.map((ev, i) => ({ ...ev, priority: i })))
           setDragY(y)
         }
       }
@@ -206,6 +244,17 @@ export default function GanttChart({ events: initialEvents, projectId }: GanttCh
     const x = (e.clientX - rect.left) * scaleX
     const y = (e.clientY - rect.top) * scaleY
 
+    const chevron = chevronZonesRef.current.find((z) => x >= z.x && x <= z.x + z.w && y >= z.y && y <= z.y + z.h)
+    if (chevron) {
+      setCollapsedParents((prev) => {
+        const next = new Set(prev)
+        if (next.has(chevron.eventId)) next.delete(chevron.eventId)
+        else next.add(chevron.eventId)
+        return next
+      })
+      return
+    }
+
     const clickedEvent = eventPositionsRef.current.find(({ x: eventX, y: eventY, width, height }) => {
       return x >= eventX && x <= eventX + width && y >= eventY && y <= eventY + height
     })
@@ -216,6 +265,8 @@ export default function GanttChart({ events: initialEvents, projectId }: GanttCh
     }
   }
 
+  const chevronZonesRef = useRef<Array<{ eventId: string; x: number; y: number; w: number; h: number }>>([])
+
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -223,145 +274,165 @@ export default function GanttChart({ events: initialEvents, projectId }: GanttCh
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
-    // Clear canvas and positions
     ctx.clearRect(0, 0, canvas.width, canvas.height)
     eventPositionsRef.current = []
+    chevronZonesRef.current = []
 
-    // Set dimensions
-    const leftPadding = 300
-    const rightPadding = 60
-    const topPadding = 80
-    const rowHeight = 70
-    const barHeight = 40
-    const dayWidth = 30
+    const leftPadding = 320
+    const rightPadding = 80
+    const topPadding = 72
+    const rowHeight = 44
+    const barHeight = 26
+    const dayWidth = 24
+    const taskColWidth = 200
+    const pctColWidth = 72
 
-    // Calculate date range
-    const dates = events.flatMap(event => [
+    // Date range from all events so every bar is visible
+    const dates = displayEvents.flatMap((event) => [
       new Date(event.startDate),
-      event.endDate ? new Date(event.endDate) : new Date(event.startDate)
+      event.endDate ? new Date(event.endDate) : new Date(event.startDate),
     ])
-    const minDate = new Date(Math.min(...dates.map(d => d.getTime())))
-    const maxDate = new Date(Math.max(...dates.map(d => d.getTime())))
-    minDate.setDate(1)
-    maxDate.setMonth(maxDate.getMonth() + 1, 0)
+    if (dates.length === 0) return
+    const minDate = new Date(Math.min(...dates.map((d) => d.getTime())))
+    const maxDate = new Date(Math.max(...dates.map((d) => d.getTime())))
+    minDate.setDate(Math.max(1, minDate.getDate() - 3))
+    maxDate.setDate(maxDate.getDate() + 7)
+    const totalDays = Math.max(1, Math.ceil((maxDate.getTime() - minDate.getTime()) / (1000 * 60 * 60 * 24)))
     timelineRef.current = { leftPadding, minDate, dayWidth }
 
-    const totalDays = Math.ceil((maxDate.getTime() - minDate.getTime()) / (1000 * 60 * 60 * 24))
-    
-    canvas.width = leftPadding + (totalDays * dayWidth) + rightPadding
-    canvas.height = topPadding + (events.length * rowHeight) + 40
+    canvas.width = leftPadding + totalDays * dayWidth + rightPadding
+    canvas.height = topPadding + displayEvents.length * rowHeight + 24
 
-    // Draw background
-    ctx.fillStyle = draggedEvent ? '#F3F4F6' : '#FFFFFF'
+    ctx.fillStyle = draggedEvent ? '#F9FAFB' : '#FFFFFF'
     ctx.fillRect(0, 0, canvas.width, canvas.height)
 
-    // Draw grid
     ctx.strokeStyle = '#E5E7EB'
     ctx.lineWidth = 1
 
-    // Draw vertical month lines and labels
+    // Header row background
+    ctx.fillStyle = '#F3F4F6'
+    ctx.fillRect(0, 0, canvas.width, topPadding - 2)
+    ctx.strokeStyle = '#D1D5DB'
+    ctx.beginPath()
+    ctx.moveTo(0, topPadding - 2)
+    ctx.lineTo(canvas.width, topPadding - 2)
+    ctx.stroke()
+
+    // Column headers: % Complete (narrow), then Task (indented for hierarchy)
+    ctx.fillStyle = '#374151'
+    ctx.font = '11px Inter, system-ui, sans-serif'
+    ctx.textAlign = 'left'
+    ctx.fillText('% Complete', 12, 22)
+    ctx.fillText('Task', pctColWidth + 12, 22)
+
+    // Month labels on timeline
+    ctx.font = '10px Inter, system-ui, sans-serif'
     let currentDate = new Date(minDate)
-    while (currentDate <= maxDate) {
+    const monthEnd = new Date(maxDate)
+    while (currentDate <= monthEnd) {
       const x = leftPadding + ((currentDate.getTime() - minDate.getTime()) / (1000 * 60 * 60 * 24)) * dayWidth
-      
+      ctx.strokeStyle = '#E5E7EB'
       ctx.beginPath()
       ctx.moveTo(x, topPadding)
       ctx.lineTo(x, canvas.height)
       ctx.stroke()
-
-      ctx.fillStyle = '#374151'
-      ctx.font = 'bold 28px Inter'
+      ctx.fillStyle = '#6B7280'
       ctx.fillText(
-        currentDate.toLocaleString('default', { month: 'long', year: 'numeric' }),
-        x + 10,
-        40
+        currentDate.toLocaleString('default', { month: 'short', year: '2-digit' }),
+        x + 4,
+        52
       )
-
       currentDate.setMonth(currentDate.getMonth() + 1)
     }
 
-    // Draw horizontal row lines
-    for (let i = 0; i <= events.length; i++) {
-      const y = topPadding + (i * rowHeight)
+    for (let i = 0; i <= displayEvents.length; i++) {
+      const y = topPadding + i * rowHeight
+      ctx.strokeStyle = '#E5E7EB'
       ctx.beginPath()
       ctx.moveTo(0, y)
       ctx.lineTo(canvas.width, y)
       ctx.stroke()
     }
 
-    // Draw left column headers
-    ctx.fillStyle = '#374151'
-    ctx.font = 'bold 28px Inter'
-    ctx.fillText('% Complete', 20, 45)
-    ctx.fillText('Task', leftPadding - 250, 45)
+    const minBarWidth = dayWidth * 2
 
-    // Draw events
-    events.forEach((event, index) => {
-      const y = topPadding + (index * rowHeight) + 15
-      const startX = leftPadding + ((new Date(event.startDate).getTime() - minDate.getTime()) / (1000 * 60 * 60 * 24)) * dayWidth
-      const endX = event.endDate 
-        ? leftPadding + ((new Date(event.endDate).getTime() - minDate.getTime()) / (1000 * 60 * 60 * 24)) * dayWidth
-        : startX + (dayWidth * 5)
+    displayEvents.forEach((event, index) => {
+      const y = topPadding + index * rowHeight + (rowHeight - barHeight) / 2
+      const depth = eventDepths.get(event.id) ?? 0
+      const indent = depth * 18
 
-      // Store event position for click detection
-      eventPositionsRef.current.push({
-        event,
-        x: startX,
-        y,
-        width: endX - startX,
-        height: barHeight
-      })
-
-      // Highlight dragged event
-      if (draggedEvent?.id === event.id) {
-        ctx.fillStyle = '#E5E7EB'
-        ctx.fillRect(0, y - 15, canvas.width, rowHeight)
+      const startDay = (new Date(event.startDate).getTime() - minDate.getTime()) / (1000 * 60 * 60 * 24)
+      const endDay = event.endDate
+        ? (new Date(event.endDate).getTime() - minDate.getTime()) / (1000 * 60 * 60 * 24)
+        : startDay + 5
+      let startX = leftPadding + startDay * dayWidth
+      let endX = leftPadding + Math.max(startDay, endDay) * dayWidth
+      let barW = endX - startX
+      if (barW < minBarWidth) {
+        endX = startX + minBarWidth
+        barW = minBarWidth
       }
 
-      // Draw completion percentage
+      eventPositionsRef.current.push({ event, x: startX, y, width: barW, height: barHeight })
+
+      if (draggedEvent?.id === event.id) {
+        ctx.fillStyle = '#EFF6FF'
+        ctx.fillRect(0, topPadding + index * rowHeight, canvas.width, rowHeight)
+      }
+
+      // Chevron zone for parents
+      const isParent = hasChildren.has(event.id)
+      if (isParent) {
+        const cx = pctColWidth + 8 + indent
+        const cy = topPadding + index * rowHeight + rowHeight / 2
+        chevronZonesRef.current.push({ eventId: event.id, x: cx - 10, y: cy - 10, w: 20, h: 20 })
+        ctx.fillStyle = collapsedParents.has(event.id) ? '#9CA3AF' : '#4B5563'
+        ctx.font = '12px Inter'
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        ctx.fillText(collapsedParents.has(event.id) ? '\u25B6' : '\u25BC', cx, cy)
+        ctx.textAlign = 'left'
+        ctx.textBaseline = 'alphabetic'
+      }
+
       ctx.fillStyle = '#6B7280'
-      ctx.font = '28px Inter'
+      ctx.font = '11px Inter, system-ui, sans-serif'
       ctx.textAlign = 'right'
-      ctx.fillText(`${event.percentComplete || 0}%`, leftPadding - 220, y + 25)
+      ctx.fillText(`${event.percentComplete ?? 0}%`, pctColWidth - 8, y + barHeight / 2 + 4)
 
-      // Draw task title
-      ctx.fillStyle = '#111827'
-      ctx.font = '28px Inter'
       ctx.textAlign = 'left'
-      ctx.fillText(event.title, leftPadding - 200, y + 25)
+      const titleX = pctColWidth + 12 + indent + (isParent ? 20 : 0)
+      const maxTitleW = leftPadding - titleX - 8
+      let titleText = event.title
+      if (ctx.measureText(titleText).width > maxTitleW) {
+        while (titleText.length > 2 && ctx.measureText(titleText + '\u2026').width > maxTitleW)
+          titleText = titleText.slice(0, -1)
+        titleText += '\u2026'
+      }
+      ctx.fillStyle = '#111827'
+      ctx.fillText(titleText, titleX, y + barHeight / 2 + 4)
 
-      // Calculate color based on index
       const colorKeys = Object.keys(COLORS)
       const color = COLORS[colorKeys[index % colorKeys.length] as keyof typeof COLORS]
-
-      // Draw progress bar background
       ctx.fillStyle = color.light
-      ctx.fillRect(startX, y, endX - startX, barHeight)
-
-      // Draw progress bar foreground (completed portion)
+      ctx.fillRect(startX, y, barW, barHeight)
+      const pct = (event.percentComplete ?? 0) / 100
       ctx.fillStyle = color.bar
-      ctx.fillRect(
-        startX,
-        y,
-        (endX - startX) * ((event.percentComplete || 0) / 100),
-        barHeight
-      )
+      ctx.fillRect(startX, y, barW * pct, barHeight)
 
-      // Draw assignee name
       if (event.assignee) {
         ctx.fillStyle = '#6B7280'
-        ctx.font = '24px Inter'
-        ctx.fillText(event.assignee, endX + 15, y + 25)
+        ctx.font = '10px Inter'
+        ctx.fillText(event.assignee, endX + 8, y + barHeight / 2 + 4)
       }
     })
-
-  }, [events, draggedEvent])
+  }, [displayEvents, draggedEvent, collapsedParents, eventDepths, hasChildren])
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 overflow-x-auto relative">
       <canvas
         ref={canvasRef}
-        height={Math.max(200, 80 + events.length * 70)}
+        height={Math.max(200, 80 + displayEvents.length * 44)}
         className="w-full cursor-move"
         style={{ minWidth: '1200px' }}
         onClick={handleCanvasClick}

@@ -1,9 +1,9 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { GripVertical, Trash2, Plus } from "lucide-react"
+import { GripVertical, Trash2, Plus, ChevronRight, ChevronDown } from "lucide-react"
 
 export interface ScheduleEvent {
   id: string
@@ -46,6 +46,28 @@ export default function ScheduleGrid({ events: initialEvents, projectId, onEvent
   const [editValue, setEditValue] = useState("")
   const [adding, setAdding] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [collapsedParents, setCollapsedParents] = useState<Set<string>>(new Set())
+
+  const flattenedRows = useMemo(() => {
+    const byParent = new Map<string | null, ScheduleEvent[]>()
+    events.forEach((e) => {
+      const key = e.parentId ?? null
+      if (!byParent.has(key)) byParent.set(key, [])
+      byParent.get(key)!.push(e)
+    })
+    const result: { event: ScheduleEvent; depth: number }[] = []
+    function add(parentId: string | null, depth: number) {
+      const children = (byParent.get(parentId) ?? []).slice().sort((a, b) => a.priority - b.priority)
+      children.forEach((ev) => {
+        const isParent = byParent.has(ev.id)
+        const isCollapsed = isParent && collapsedParents.has(ev.id)
+        result.push({ event: ev, depth })
+        if (isParent && !isCollapsed) add(ev.id, depth + 1)
+      })
+    }
+    add(null, 0)
+    return result
+  }, [events, collapsedParents])
 
   const patchEvent = useCallback(
     async (eventId: string, data: Record<string, unknown>) => {
@@ -78,7 +100,7 @@ export default function ScheduleGrid({ events: initialEvents, projectId, onEvent
   const saveEdit = (eventId: string, field: string) => {
     const event = events.find((e) => e.id === eventId)
     if (!event) return
-    if (editValue === String((event as Record<string, unknown>)[field])) {
+    if (editValue === String((event as unknown as Record<string, unknown>)[field])) {
       setEditingCell(null)
       return
     }
@@ -94,6 +116,10 @@ export default function ScheduleGrid({ events: initialEvents, projectId, onEvent
     }
     if (field === "title" || field === "assignee") {
       patchEvent(eventId, { [field]: editValue })
+      return
+    }
+    if (field === "parentId") {
+      patchEvent(eventId, { parentId: editValue || null })
       return
     }
     if (field === "status") {
@@ -187,11 +213,17 @@ export default function ScheduleGrid({ events: initialEvents, projectId, onEvent
               <th className="text-left px-3 py-2.5 text-sm font-semibold text-gray-700 border-r border-gray-200 w-[120px]">
                 Predecessors
               </th>
+              <th className="text-left px-3 py-2.5 text-sm font-semibold text-gray-700 border-r border-gray-200 w-[140px]">
+                Parent task
+              </th>
               <th className="w-10 px-2 py-2.5 border-gray-200" />
             </tr>
           </thead>
           <tbody>
-            {events.map((event) => (
+            {flattenedRows.map(({ event, depth }) => {
+              const hasChildren = events.some((e) => e.parentId === event.id)
+              const isCollapsed = collapsedParents.has(event.id)
+              return (
               <tr
                 key={event.id}
                 className="border-b border-gray-100 hover:bg-gray-50/80 group"
@@ -200,24 +232,52 @@ export default function ScheduleGrid({ events: initialEvents, projectId, onEvent
                   <GripVertical className="h-4 w-4" />
                 </td>
                 <td className="px-3 py-1.5 border-r border-gray-100">
-                  {isEditing(event.id, "title") ? (
-                    <Input
-                      autoFocus
-                      value={editValue}
-                      onChange={(e) => setEditValue(e.target.value)}
-                      onBlur={() => saveEdit(event.id, "title")}
-                      onKeyDown={(e) => e.key === "Enter" && saveEdit(event.id, "title")}
-                      className="h-8 text-sm"
-                    />
-                  ) : (
-                    <button
-                      type="button"
-                      className="w-full text-left text-sm text-gray-900 hover:bg-gray-100 rounded px-2 py-1 -mx-2 -my-1"
-                      onClick={() => startEdit(event.id, "title", event.title)}
-                    >
-                      {event.title || "—"}
-                    </button>
-                  )}
+                  <div
+                    className="flex items-center gap-1"
+                    style={{ paddingLeft: depth * 20 }}
+                  >
+                    {hasChildren ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setCollapsedParents((prev) => {
+                            const next = new Set(prev)
+                            if (next.has(event.id)) next.delete(event.id)
+                            else next.add(event.id)
+                            return next
+                          })
+                        }
+                        className="p-0.5 rounded hover:bg-gray-200 text-gray-500"
+                        aria-label={isCollapsed ? "Expand" : "Collapse"}
+                      >
+                        {isCollapsed ? (
+                          <ChevronRight className="h-4 w-4" />
+                        ) : (
+                          <ChevronDown className="h-4 w-4" />
+                        )}
+                      </button>
+                    ) : (
+                      <span className="w-5 inline-block" />
+                    )}
+                    {isEditing(event.id, "title") ? (
+                      <Input
+                        autoFocus
+                        value={editValue}
+                        onChange={(e) => setEditValue(e.target.value)}
+                        onBlur={() => saveEdit(event.id, "title")}
+                        onKeyDown={(e) => e.key === "Enter" && saveEdit(event.id, "title")}
+                        className="h-8 text-sm flex-1 min-w-0"
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        className="flex-1 min-w-0 text-left text-sm text-gray-900 hover:bg-gray-100 rounded px-2 py-1 -mx-2 -my-1"
+                        onClick={() => startEdit(event.id, "title", event.title)}
+                      >
+                        {event.title || "—"}
+                      </button>
+                    )}
+                  </div>
                 </td>
                 <td className="px-3 py-1.5 border-r border-gray-100">
                   {isEditing(event.id, "startDate") ? (
@@ -386,6 +446,38 @@ export default function ScheduleGrid({ events: initialEvents, projectId, onEvent
                     </button>
                   )}
                 </td>
+                <td className="px-3 py-1.5 border-r border-gray-100">
+                  {isEditing(event.id, "parentId") ? (
+                    <select
+                      autoFocus
+                      value={editValue}
+                      onChange={(e) => setEditValue(e.target.value)}
+                      onBlur={() => saveEdit(event.id, "parentId")}
+                      className="h-8 text-sm border rounded px-2 w-full"
+                    >
+                      <option value="">— None (top level) —</option>
+                      {events
+                        .filter((e) => e.id !== event.id)
+                        .map((e) => (
+                          <option key={e.id} value={e.id}>
+                            {e.title}
+                          </option>
+                        ))}
+                    </select>
+                  ) : (
+                    <button
+                      type="button"
+                      className="w-full text-left text-sm text-gray-600 hover:bg-gray-100 rounded px-2 py-1 -mx-2 -my-1"
+                      onClick={() =>
+                        startEdit(event.id, "parentId", event.parentId ?? "")
+                      }
+                    >
+                      {event.parentId
+                        ? events.find((e) => e.id === event.parentId)?.title ?? event.parentId
+                        : "—"}
+                    </button>
+                  )}
+                </td>
                 <td className="px-2 py-1.5">
                   <button
                     type="button"
@@ -397,7 +489,7 @@ export default function ScheduleGrid({ events: initialEvents, projectId, onEvent
                   </button>
                 </td>
               </tr>
-            ))}
+            )})}
           </tbody>
         </table>
       </div>

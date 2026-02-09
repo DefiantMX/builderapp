@@ -184,6 +184,7 @@ export default function SchedulePage({ params }: { params: { id: string } }) {
               percentComplete: e.percentComplete,
               priority: e.priority ?? 0,
               assignee: (e as Event).assignee ?? undefined,
+              parentId: (e as Event & { parentId?: string | null }).parentId ?? null,
             }))}
             projectId={project.id}
           />
