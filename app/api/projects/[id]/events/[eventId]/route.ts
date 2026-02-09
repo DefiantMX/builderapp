@@ -13,7 +13,7 @@ export async function PATCH(
     }
 
     const body = await request.json()
-    const { percentComplete, status } = body
+    const { percentComplete, status, startDate, endDate, priority, title, description, assignee, parentId, predecessorIds } = body
 
     // Validate input
     if (percentComplete !== undefined && (typeof percentComplete !== 'number' || percentComplete < 0 || percentComplete > 100)) {
@@ -36,10 +36,18 @@ export async function PATCH(
       return new NextResponse('Project not found', { status: 404 })
     }
 
-    // Update event
-    const updateData: any = {}
+    // Update event - support full Smartsheet-style field updates
+    const updateData: Record<string, unknown> = {}
     if (percentComplete !== undefined) updateData.percentComplete = percentComplete
-    if (status) updateData.status = status
+    if (status !== undefined) updateData.status = status
+    if (startDate !== undefined) updateData.startDate = new Date(startDate)
+    if (endDate !== undefined) updateData.endDate = endDate ? new Date(endDate) : null
+    if (priority !== undefined) updateData.priority = priority
+    if (title !== undefined) updateData.title = title
+    if (description !== undefined) updateData.description = description
+    if (assignee !== undefined) updateData.assignee = assignee || null
+    if (parentId !== undefined) updateData.parentId = parentId || null
+    if (predecessorIds !== undefined) updateData.predecessorIds = Array.isArray(predecessorIds) ? predecessorIds : []
 
     // If percentComplete is 100, automatically set status to Completed
     if (percentComplete === 100) {

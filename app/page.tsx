@@ -1,9 +1,50 @@
+"use client"
+
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Ruler, Square, MousePointer, Type, Layers, Settings, RotateCcw, ZoomIn, ZoomOut } from "lucide-react";
+import { useAuth } from "@/app/contexts/AuthContext";
 
 export default function HomePage() {
+  const { user, loading } = useAuth();
+  const router = useRouter();
+  
+  // Debug logging
+  console.log('HomePage - user:', user, 'loading:', loading);
+  
+  // Redirect to dashboard if user is logged in
+  useEffect(() => {
+    if (!loading && user) {
+      router.push('/dashboard');
+    }
+  }, [user, loading, router]);
+  
+  // Show loading state while auth is being checked
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+  
+  // If user is logged in, show redirecting message (shouldn't be visible for long)
+  if (user) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Redirecting to dashboard...</p>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
       {/* Header */}
@@ -14,12 +55,21 @@ export default function HomePage() {
               <h1 className="text-2xl font-bold text-gray-900">Advanced Takeoff</h1>
             </div>
             <div className="flex items-center space-x-4">
-              <Link href="/demo">
-                <Button variant="outline">Try Demo</Button>
-              </Link>
-              <Link href="/login">
-                <Button>Sign In</Button>
-              </Link>
+              {!user && (
+                <>
+                  <Link href="/demo">
+                    <Button variant="outline">Try Demo</Button>
+                  </Link>
+                  <Link href="/login">
+                    <Button>Sign In</Button>
+                  </Link>
+                </>
+              )}
+              {user && (
+                <Link href="/dashboard">
+                  <Button>Go to Dashboard</Button>
+                </Link>
+              )}
             </div>
           </div>
         </div>
@@ -179,18 +229,34 @@ export default function HomePage() {
             Join contractors and estimators who are already using our advanced takeoff software 
             to save time and improve accuracy.
           </p>
-          <div className="flex justify-center space-x-4">
-            <Link href="/demo">
-              <Button size="lg" className="px-8">
-                Start Free Demo
-              </Button>
-            </Link>
-            <Link href="/register">
-              <Button variant="outline" size="lg" className="px-8">
-                Create Account
-              </Button>
-            </Link>
-          </div>
+          {!user && (
+            <div className="flex justify-center space-x-4">
+              <Link href="/demo">
+                <Button size="lg" className="px-8">
+                  Start Free Demo
+                </Button>
+              </Link>
+              <Link href="/register">
+                <Button variant="outline" size="lg" className="px-8">
+                  Create Account
+                </Button>
+              </Link>
+            </div>
+          )}
+          {user && (
+            <div className="flex justify-center space-x-4">
+              <Link href="/dashboard">
+                <Button size="lg" className="px-8">
+                  Go to Dashboard
+                </Button>
+              </Link>
+              <Link href="/projects">
+                <Button variant="outline" size="lg" className="px-8">
+                  View Projects
+                </Button>
+              </Link>
+            </div>
+          )}
         </div>
       </section>
 
@@ -203,9 +269,20 @@ export default function HomePage() {
               Professional construction takeoff software for modern contractors
             </p>
             <div className="flex justify-center space-x-6 text-sm text-gray-400">
-              <Link href="/demo" className="hover:text-white">Demo</Link>
-              <Link href="/login" className="hover:text-white">Sign In</Link>
-              <Link href="/register" className="hover:text-white">Register</Link>
+              {!user && (
+                <>
+                  <Link href="/demo" className="hover:text-white">Demo</Link>
+                  <Link href="/login" className="hover:text-white">Sign In</Link>
+                  <Link href="/register" className="hover:text-white">Register</Link>
+                </>
+              )}
+              {user && (
+                <>
+                  <Link href="/dashboard" className="hover:text-white">Dashboard</Link>
+                  <Link href="/projects" className="hover:text-white">Projects</Link>
+                  <Link href="/estimating" className="hover:text-white">Estimating</Link>
+                </>
+              )}
             </div>
           </div>
         </div>

@@ -8,6 +8,9 @@ import CreateDrawForm from "@/app/components/CreateDrawForm"
 import EditDrawForm from "@/app/components/EditDrawForm"
 import UploadInvoiceForm from "@/app/components/UploadInvoiceForm"
 import ChangeOrderForm from "@/app/components/ChangeOrderForm"
+import EnhancedInvoiceList from "@/app/components/EnhancedInvoiceList"
+import EnhancedInvoiceForm from "@/app/components/EnhancedInvoiceForm"
+import InvoiceExport from "@/app/components/InvoiceExport"
 import { DIVISIONS, DIVISION_SUBCATEGORIES } from "@/lib/constants"
 import { FileText } from "lucide-react"
 
@@ -25,9 +28,13 @@ interface DivisionAllocation {
 
 interface Invoice {
   id: string
+  invoiceNumber?: string
   date: string
+  dueDate?: string
+  paymentDate?: string
   vendor: string
   amount: number
+  status: 'UNPAID' | 'PAID' | 'OVERDUE' | 'PARTIAL'
   description?: string
   division: DivisionCode
   projectId: string
@@ -100,12 +107,16 @@ export default function ClientFinancePage({
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null)
   const [editingChangeOrder, setEditingChangeOrder] = useState<ChangeOrder | null>(null)
   const [selectedInvoices, setSelectedInvoices] = useState<Set<string>>(new Set())
+  const [showEnhancedInvoiceForm, setShowEnhancedInvoiceForm] = useState(false)
+  const [showInvoiceExport, setShowInvoiceExport] = useState(false)
   const [overviewData, setOverviewData] = useState<{
     totalBudget: number
     totalInvoices: number
     totalDraws: number
+    totalChangeOrders: number
     budgetByDivision: Record<DivisionCode, number>
     invoicesByDivision: Record<DivisionCode, number>
+    changeOrdersByDivision: Record<DivisionCode, number>
   } | null>(null)
 
   // Derive invoices directly from the project state
@@ -190,12 +201,20 @@ export default function ClientFinancePage({
             return acc
           }, {} as Record<DivisionCode, number>)
 
+          const totalChangeOrders = data.changeOrders.reduce((sum: number, changeOrder: ChangeOrder) => sum + changeOrder.amount, 0)
+          const changeOrdersByDivision = data.changeOrders.reduce((acc: Record<DivisionCode, number>, changeOrder: ChangeOrder) => {
+            acc[changeOrder.division as DivisionCode] = (acc[changeOrder.division as DivisionCode] || 0) + changeOrder.amount
+            return acc
+          }, {} as Record<DivisionCode, number>)
+
           setOverviewData({
             totalBudget,
             totalInvoices,
             totalDraws,
+            totalChangeOrders,
             budgetByDivision,
             invoicesByDivision,
+            changeOrdersByDivision,
           })
         }
       } catch (error) {
@@ -222,6 +241,7 @@ export default function ClientFinancePage({
     const totalBudget = project.budget?.totalAmount || 0
     const totalInvoices = project.invoices.reduce((sum: number, invoice: Invoice) => sum + invoice.amount, 0)
     const totalDraws = project.draws.reduce((sum: number, draw: Draw) => sum + draw.amount, 0)
+    const totalChangeOrders = project.changeOrders.reduce((sum: number, changeOrder: ChangeOrder) => sum + changeOrder.amount, 0)
 
     const budgetByDivision = project.budget?.divisionBudgets.reduce((acc: Record<DivisionCode, number>, budget: { division: DivisionCode; amount: number }) => {
       acc[budget.division] = budget.amount
@@ -233,12 +253,19 @@ export default function ClientFinancePage({
       return acc
     }, {} as Record<DivisionCode, number>)
 
+    const changeOrdersByDivision = project.changeOrders.reduce((acc: Record<DivisionCode, number>, changeOrder: ChangeOrder) => {
+      acc[changeOrder.division as DivisionCode] = (acc[changeOrder.division as DivisionCode] || 0) + changeOrder.amount
+      return acc
+    }, {} as Record<DivisionCode, number>)
+
     return {
       totalBudget,
       totalInvoices,
       totalDraws,
+      totalChangeOrders,
       budgetByDivision,
       invoicesByDivision,
+      changeOrdersByDivision,
     }
   }
 
@@ -261,6 +288,48 @@ export default function ClientFinancePage({
     } catch (error) {
       console.error("Error deleting invoice:", error)
     }
+  }
+
+  // Enhanced invoice handlers
+  const handleEditInvoice = (invoice: Invoice) => {
+    setEditingInvoice(invoice)
+    setShowEnhancedInvoiceForm(true)
+  }
+
+  const handleViewInvoice = (invoice: Invoice) => {
+    // For now, just edit the invoice. You can implement a view-only mode later
+    handleEditInvoice(invoice)
+  }
+
+  const handleBulkStatusUpdate = async (invoiceIds: string[], status: string) => {
+    try {
+      const response = await fetch(`/api/projects/${projectId}/invoices/bulk-update`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          invoiceIds,
+          status,
+          paymentDate: status === 'PAID' ? new Date().toISOString().split('T')[0] : null
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error("Failed to update invoice status")
+      }
+
+      // Reload the page to refresh data
+      window.location.reload()
+    } catch (error) {
+      console.error("Error updating invoice status:", error)
+    }
+  }
+
+  const handleExportInvoices = (format: 'csv' | 'pdf' | 'excel') => {
+    // Implement export functionality
+    console.log('Exporting invoices in', format, 'format')
+    // You can implement actual export logic here
   }
 
   const handleUpdateDrawStatus = async (drawId: string, status: string) => {
@@ -601,9 +670,27 @@ export default function ClientFinancePage({
     )
   }
 
-  const renderInvoices = () => (
-    <div className="bg-white shadow-lg rounded-lg p-6">
-      {showDrawForm ? (
+  const renderInvoices = () => {
+    if (showEnhancedInvoiceForm) {
+      return (
+        <EnhancedInvoiceForm
+          projectId={project.id}
+          invoice={editingInvoice || undefined}
+          onSuccess={() => {
+            setShowEnhancedInvoiceForm(false)
+            setEditingInvoice(null)
+            window.location.reload()
+          }}
+          onCancel={() => {
+            setShowEnhancedInvoiceForm(false)
+            setEditingInvoice(null)
+          }}
+        />
+      )
+    }
+
+    if (showDrawForm) {
+      return (
         <CreateDrawForm
           projectId={project.id}
           onDrawCreated={() => {
@@ -618,7 +705,11 @@ export default function ClientFinancePage({
           nextDrawNumber={currentDraws.length > 0 ? Math.max(...currentDraws.map((d) => Number(d.drawNumber))) + 1 : 1}
           preselectedInvoices={Array.from(selectedInvoices)}
         />
-      ) : showInvoiceForm ? (
+      )
+    }
+
+    if (showInvoiceForm) {
+      return (
         <UploadInvoiceForm
           projectId={project.id}
           onSuccess={() => {
@@ -629,107 +720,55 @@ export default function ClientFinancePage({
             setShowInvoiceForm(false)
           }}
         />
-      ) : (
-        <>
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-semibold">Recent Invoices</h2>
-            <div className="space-x-2">
-              {selectedInvoices.size > 0 && (
-                <button
-                  onClick={() => setShowDrawForm(true)}
-                  className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500"
-                >
-                  Create Draw with Selected
-                </button>
-              )}
+      )
+    }
+
+    return (
+      <div className="space-y-6">
+        {/* Enhanced Invoice List */}
+        <EnhancedInvoiceList
+          invoices={invoices}
+          onEdit={handleEditInvoice}
+          onDelete={handleDeleteInvoice}
+          onView={handleViewInvoice}
+          onBulkStatusUpdate={handleBulkStatusUpdate}
+          onExport={handleExportInvoices}
+        />
+
+        {/* Legacy Draw Creation Button */}
+        {selectedInvoices.size > 0 && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-blue-800">
+                  {selectedInvoices.size} invoice{selectedInvoices.size !== 1 ? 's' : ''} selected
+                </span>
+              </div>
               <button
-                onClick={() => {
-                  setEditingInvoice(null)
-                  setShowInvoiceForm(true)
-                }}
+                onClick={() => setShowDrawForm(true)}
                 className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500"
               >
-                Add Invoice
+                Create Draw with Selected
               </button>
             </div>
           </div>
+        )}
 
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  <input
-                    type="checkbox"
-                    checked={currentInvoices.length > 0 && selectedInvoices.size === currentInvoices.length}
-                    onChange={(e) => handleSelectAllInvoices(e.target.checked)}
-                    disabled={currentInvoices.length === 0} // Disable if no invoices
-                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded disabled:opacity-50"
-                  />
-                </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Date
-                </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Vendor
-                </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Division
-                </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Amount
-                </th>
-                <th scope="col" className="relative px-6 py-3">
-                  <span className="sr-only">Actions</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {currentInvoices.map((invoice) => (
-                <tr 
-                  key={invoice.id}
-                  className={selectedInvoices.has(invoice.id) ? "bg-blue-50" : "hover:bg-gray-50"}
-                >
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <input
-                      type="checkbox"
-                      checked={selectedInvoices.has(invoice.id)}
-                      onChange={(e) => handleInvoiceSelect(invoice.id, e.target.checked)}
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                    />
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {new Date(invoice.date).toLocaleDateString()}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {invoice.vendor}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    <div className="text-sm text-gray-500">
-                      Division {invoice.division} - {DIVISIONS[invoice.division]}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    ${invoice.amount.toLocaleString()}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    <button
-                      onClick={() => handleDeleteInvoice(invoice.id)}
-                      className="text-red-600 hover:text-red-900 ml-4"
-                    >
-                      Delete
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {currentInvoices.length === 0 && (
-            <p className="text-center text-gray-500 py-4">No invoices found.</p>
-          )}
-        </>
-      )}
-    </div>
-  )
+        {/* Add Invoice Button */}
+        <div className="flex justify-end">
+          <button
+            onClick={() => {
+              setEditingInvoice(null)
+              setShowEnhancedInvoiceForm(true)
+            }}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            Add New Invoice
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   const renderDraws = () => {
     const { currentDraws } = getProjectData();
@@ -953,7 +992,7 @@ export default function ClientFinancePage({
     <div className="space-y-6">
       <div className="bg-white shadow-lg rounded-lg p-6">
         <h2 className="text-xl font-semibold mb-4">Financial Summary</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-blue-50 p-4 rounded-lg">
             <p className="text-sm text-gray-600">Total Budget</p>
             <p className="text-2xl font-bold">${overviewData?.totalBudget.toLocaleString() || '0'}</p>
@@ -965,6 +1004,35 @@ export default function ClientFinancePage({
           <div className="bg-purple-50 p-4 rounded-lg">
             <p className="text-sm text-gray-600">Total Draws</p>
             <p className="text-2xl font-bold">${overviewData?.totalDraws.toLocaleString() || '0'}</p>
+          </div>
+          <div className="bg-orange-50 p-4 rounded-lg">
+            <p className="text-sm text-gray-600">Change Orders</p>
+            <p className="text-2xl font-bold">${overviewData?.totalChangeOrders.toLocaleString() || '0'}</p>
+          </div>
+        </div>
+        
+        {/* Additional Financial Metrics */}
+        <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-gray-50 p-4 rounded-lg">
+            <p className="text-sm text-gray-600">Total Project Value</p>
+            <p className="text-xl font-bold text-gray-800">
+              ${((overviewData?.totalBudget || 0) + (overviewData?.totalChangeOrders || 0)).toLocaleString()}
+            </p>
+            <p className="text-xs text-gray-500">Budget + Change Orders</p>
+          </div>
+          <div className="bg-red-50 p-4 rounded-lg">
+            <p className="text-sm text-gray-600">Total Spent</p>
+            <p className="text-xl font-bold text-red-600">
+              ${((overviewData?.totalInvoices || 0) + (overviewData?.totalDraws || 0)).toLocaleString()}
+            </p>
+            <p className="text-xs text-gray-500">Invoices + Draws</p>
+          </div>
+          <div className="bg-yellow-50 p-4 rounded-lg">
+            <p className="text-sm text-gray-600">Remaining Budget</p>
+            <p className="text-xl font-bold text-yellow-600">
+              ${(((overviewData?.totalBudget || 0) + (overviewData?.totalChangeOrders || 0)) - ((overviewData?.totalInvoices || 0) + (overviewData?.totalDraws || 0))).toLocaleString()}
+            </p>
+            <p className="text-xs text-gray-500">Project Value - Total Spent</p>
           </div>
         </div>
       </div>

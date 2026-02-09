@@ -163,12 +163,16 @@ model Event {
   status          String    @default("Scheduled")
   percentComplete Int       @default(0)
   priority        Int       @default(0)
+  assignee        String?
+  parentId        String?
+  predecessorIds  String[]  @default([]) // Event IDs this task depends on (construction: "finish before start")
   project         Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   projectId       String
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
   @@index([projectId])
+  @@index([parentId])
 }
 
 model Bid {

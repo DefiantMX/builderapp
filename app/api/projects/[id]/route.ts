@@ -21,9 +21,10 @@ export async function GET(
       },
       include: {
         events: {
-          orderBy: {
-            startDate: 'asc'
-          }
+          orderBy: [
+            { priority: 'asc' },
+            { startDate: 'asc' }
+          ]
         },
         dailyLogs: {
           orderBy: {

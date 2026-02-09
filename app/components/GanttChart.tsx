@@ -32,10 +32,13 @@ export default function GanttChart({ events: initialEvents, projectId }: GanttCh
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [events, setEvents] = useState<Event[]>(initialEvents)
+  type DragMode = 'row' | 'move' | 'resize-start' | 'resize-end'
   const [draggedEvent, setDraggedEvent] = useState<Event | null>(null)
   const [dragY, setDragY] = useState<number | null>(null)
+  const [dragMode, setDragMode] = useState<DragMode | null>(null)
+  const dragStartRef = useRef<{ x: number; y: number; startDate: Date; endDate: Date; barStartX: number; barWidth: number } | null>(null)
 
-  // Store event positions for click and drag detection
+  // Store event positions and timeline scale for drag-to-resize/move
   const eventPositionsRef = useRef<Array<{
     event: Event
     x: number
@@ -43,6 +46,7 @@ export default function GanttChart({ events: initialEvents, projectId }: GanttCh
     width: number
     height: number
   }>>([])
+  const timelineRef = useRef<{ leftPadding: number; minDate: Date; dayWidth: number } | null>(null)
 
   const handleCanvasMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current
@@ -54,82 +58,144 @@ export default function GanttChart({ events: initialEvents, projectId }: GanttCh
     const x = (e.clientX - rect.left) * scaleX
     const y = (e.clientY - rect.top) * scaleY
 
-    const clickedEvent = eventPositionsRef.current.find(({ x: eventX, y: eventY, width, height }) => {
+    const clicked = eventPositionsRef.current.find(({ x: eventX, y: eventY, width, height }) => {
       return x >= eventX && x <= eventX + width && y >= eventY && y <= eventY + height
     })
 
-    if (clickedEvent) {
-      setDraggedEvent(clickedEvent.event)
+    if (clicked) {
+      const barStartX = clicked.x
+      const barWidth = clicked.width
+      const relX = (x - barStartX) / barWidth
+      const startDate = new Date(clicked.event.startDate)
+      const endDate = clicked.event.endDate ? new Date(clicked.event.endDate) : new Date(startDate.getTime() + 5 * 24 * 60 * 60 * 1000)
+      setDraggedEvent(clicked.event)
       setDragY(y)
+      setDragMode(null)
+      dragStartRef.current = {
+        x,
+        y,
+        startDate,
+        endDate,
+        barStartX,
+        barWidth,
+      }
     }
   }
 
   const handleCanvasMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!draggedEvent || dragY === null) return
+    if (!draggedEvent || dragStartRef.current === null) return
 
     const canvas = canvasRef.current
     if (!canvas) return
 
     const rect = canvas.getBoundingClientRect()
+    const scaleX = canvas.width / rect.width
     const scaleY = canvas.height / rect.height
+    const x = (e.clientX - rect.left) * scaleX
     const y = (e.clientY - rect.top) * scaleY
-
-    // Calculate the difference in rows
+    const deltaX = x - dragStartRef.current.x
+    const deltaY = y - dragStartRef.current.y
     const rowHeight = 70
-    const rowDiff = Math.round((y - dragY) / rowHeight)
-    
-    if (rowDiff !== 0) {
-      const oldIndex = events.findIndex(e => e.id === draggedEvent.id)
-      const newIndex = Math.max(0, Math.min(events.length - 1, oldIndex + rowDiff))
-      
-      if (oldIndex !== newIndex) {
-        const newEvents = [...events]
-        const [movedEvent] = newEvents.splice(oldIndex, 1)
-        newEvents.splice(newIndex, 0, movedEvent)
-        
-        // Update priorities
-        const updatedEvents = newEvents.map((event, index) => ({
-          ...event,
-          priority: index
-        }))
-        
-        setEvents(updatedEvents)
-        setDragY(y)
+    const dayWidth = timelineRef.current?.dayWidth ?? 30
+
+    // Decide drag mode on first significant move
+    if (dragMode === null) {
+      if (Math.abs(deltaX) > 8 || Math.abs(deltaY) > 8) {
+        if (Math.abs(deltaX) >= Math.abs(deltaY)) {
+          const barStartX = dragStartRef.current.barStartX
+          const barWidth = dragStartRef.current.barWidth
+          const relX = (dragStartRef.current.x - barStartX) / barWidth
+          if (relX < 0.2) setDragMode('resize-start')
+          else if (relX > 0.8) setDragMode('resize-end')
+          else setDragMode('move')
+        } else {
+          setDragMode('row')
+        }
       }
+    }
+
+    const mode = dragMode
+
+    if (mode === 'row' && dragY !== null) {
+      const rowDiff = Math.round((y - dragY) / rowHeight)
+      if (rowDiff !== 0) {
+        const oldIndex = events.findIndex(ev => ev.id === draggedEvent.id)
+        const newIndex = Math.max(0, Math.min(events.length - 1, oldIndex + rowDiff))
+        if (oldIndex !== newIndex) {
+          const newEvents = [...events]
+          const [movedEvent] = newEvents.splice(oldIndex, 1)
+          newEvents.splice(newIndex, 0, movedEvent)
+          setEvents(newEvents.map((ev, i) => ({ ...ev, priority: i })))
+          setDragY(y)
+        }
+      }
+      return
+    }
+
+    if ((mode === 'move' || mode === 'resize-start' || mode === 'resize-end') && dayWidth > 0) {
+      const dayDelta = Math.round(deltaX / dayWidth)
+      if (dayDelta === 0) return
+
+      setEvents(prev => prev.map(ev => {
+        if (ev.id !== draggedEvent.id) return ev
+        const start = new Date(ev.startDate)
+        const end = ev.endDate ? new Date(ev.endDate) : new Date(start.getTime() + 5 * 24 * 60 * 60 * 1000)
+        if (mode === 'move') {
+          start.setDate(start.getDate() + dayDelta)
+          end.setDate(end.getDate() + dayDelta)
+        } else if (mode === 'resize-start') {
+          start.setDate(start.getDate() + dayDelta)
+          if (start >= end) end.setTime(start.getTime() + 24 * 60 * 60 * 1000)
+        } else {
+          end.setDate(end.getDate() + dayDelta)
+          if (end <= start) start.setTime(end.getTime() - 24 * 60 * 60 * 1000)
+        }
+        return {
+          ...ev,
+          startDate: start.toISOString().slice(0, 10),
+          endDate: end.toISOString().slice(0, 10),
+        }
+      }))
+      dragStartRef.current = { ...dragStartRef.current, x, y }
     }
   }
 
   const handleCanvasMouseUp = async () => {
     if (draggedEvent) {
-      // Find the updated event
+      if (dragMode !== null) didDragRef.current = true
       const updatedEvent = events.find(e => e.id === draggedEvent.id)
       if (updatedEvent) {
         try {
-          // Update the priority in the database
+          const payload: Record<string, unknown> = { priority: updatedEvent.priority }
+          if (dragMode === 'move' || dragMode === 'resize-start' || dragMode === 'resize-end') {
+            payload.startDate = new Date(updatedEvent.startDate).toISOString().slice(0, 10)
+            payload.endDate = updatedEvent.endDate ? new Date(updatedEvent.endDate).toISOString().slice(0, 10) : null
+          }
           const response = await fetch(`/api/projects/${projectId}/events/${draggedEvent.id}`, {
             method: 'PATCH',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ priority: updatedEvent.priority }),
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
           })
-
-          if (!response.ok) {
-            throw new Error('Failed to update event priority')
-          }
-        } catch (error) {
-          console.error('Error updating event priority:', error)
-          // Revert to initial events if the update fails
+          if (!response.ok) throw new Error('Failed to update')
+        } catch (err) {
+          console.error(err)
           setEvents(initialEvents)
         }
       }
     }
     setDraggedEvent(null)
     setDragY(null)
+    setDragMode(null)
+    dragStartRef.current = null
   }
 
+  const didDragRef = useRef(false)
   const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (draggedEvent) return // Don't open modal if we were dragging
+    if (didDragRef.current) {
+      didDragRef.current = false
+      return
+    }
+    if (draggedEvent) return
 
     const canvas = canvasRef.current
     if (!canvas) return
@@ -176,9 +242,9 @@ export default function GanttChart({ events: initialEvents, projectId }: GanttCh
     ])
     const minDate = new Date(Math.min(...dates.map(d => d.getTime())))
     const maxDate = new Date(Math.max(...dates.map(d => d.getTime())))
-    
     minDate.setDate(1)
     maxDate.setMonth(maxDate.getMonth() + 1, 0)
+    timelineRef.current = { leftPadding, minDate, dayWidth }
 
     const totalDays = Math.ceil((maxDate.getTime() - minDate.getTime()) / (1000 * 60 * 60 * 24))
     
@@ -306,7 +372,13 @@ export default function GanttChart({ events: initialEvents, projectId }: GanttCh
       />
       {selectedEvent && (
         <EditEventModal
-          event={selectedEvent}
+          event={{
+            ...selectedEvent,
+            startDate: typeof selectedEvent.startDate === 'string' ? selectedEvent.startDate : new Date(selectedEvent.startDate).toISOString().slice(0, 10),
+            endDate: selectedEvent.endDate
+              ? (typeof selectedEvent.endDate === 'string' ? selectedEvent.endDate : new Date(selectedEvent.endDate).toISOString().slice(0, 10))
+              : null,
+          }}
           projectId={projectId}
           isOpen={isModalOpen}
           onClose={() => {

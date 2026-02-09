@@ -45,6 +45,7 @@ export async function POST(
     }
 
     let vendor: string, amount: number, date: string, description: string | null, division: string
+    let invoiceNumber: string | null, dueDate: string | null, paymentDate: string | null, status: string
 
     const contentType = req.headers.get('content-type') || ''
     
@@ -55,6 +56,10 @@ export async function POST(
       date = formData.get('date') as string
       description = formData.get('description') as string || null
       division = formData.get('division') as string
+      invoiceNumber = formData.get('invoiceNumber') as string || null
+      dueDate = formData.get('dueDate') as string || null
+      paymentDate = formData.get('paymentDate') as string || null
+      status = formData.get('status') as string || 'UNPAID'
     } else {
       const body = await req.json()
       vendor = body.vendor
@@ -62,6 +67,10 @@ export async function POST(
       date = body.date
       description = body.description
       division = body.division
+      invoiceNumber = body.invoiceNumber || null
+      dueDate = body.dueDate || null
+      paymentDate = body.paymentDate || null
+      status = body.status || 'UNPAID'
     }
 
     // Validate required fields
@@ -89,6 +98,10 @@ export async function POST(
         date: new Date(date),
         description,
         division,
+        invoiceNumber,
+        dueDate: dueDate ? new Date(dueDate) : null,
+        paymentDate: paymentDate ? new Date(paymentDate) : null,
+        status: status as any,
         projectId: params.id
       }
     })
@@ -111,7 +124,18 @@ export async function PUT(
       return new NextResponse("Unauthorized", { status: 401 })
     }
 
-    const { id, division, vendor, amount, date, description } = await req.json()
+    const { 
+      id, 
+      division, 
+      vendor, 
+      amount, 
+      date, 
+      description, 
+      invoiceNumber, 
+      dueDate, 
+      paymentDate, 
+      status 
+    } = await req.json()
 
     // Verify project ownership
     const project = await db.project.findUnique({
@@ -135,7 +159,11 @@ export async function PUT(
         vendor,
         amount,
         date: new Date(date),
-        description
+        description,
+        invoiceNumber,
+        dueDate: dueDate ? new Date(dueDate) : null,
+        paymentDate: paymentDate ? new Date(paymentDate) : null,
+        status: status as any
       }
     })
 

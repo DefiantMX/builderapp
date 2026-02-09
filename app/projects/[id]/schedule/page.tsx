@@ -6,6 +6,8 @@ import Link from "next/link"
 import GanttChart from "@/app/components/GanttChart"
 import EventListItem from "@/app/components/EventListItem"
 import ScheduleExportPDF from "@/app/components/ScheduleExportPDF"
+import ScheduleGrid, { type ScheduleEvent } from "@/app/components/ScheduleGrid"
+import { LayoutGrid, GanttChartIcon, List } from "lucide-react"
 
 interface Event {
   id: string
@@ -16,6 +18,8 @@ interface Event {
   status: string
   percentComplete: number
   priority?: number
+  assignee?: string | null
+  predecessorIds?: string[]
 }
 
 interface Project {
@@ -28,10 +32,13 @@ interface Project {
   events: Event[]
 }
 
+type ScheduleView = "grid" | "gantt" | "list"
+
 export default function SchedulePage({ params }: { params: { id: string } }) {
   const router = useRouter()
   const [project, setProject] = useState<Project | null>(null)
   const [loading, setLoading] = useState(true)
+  const [view, setView] = useState<ScheduleView>("grid")
 
   useEffect(() => {
     const fetchProject = async () => {
@@ -74,72 +81,131 @@ export default function SchedulePage({ params }: { params: { id: string } }) {
     return acc
   }, {})
 
+  const refreshData = () => {
+    fetch(`/api/projects/${params.id}`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => data && setProject(data))
+  }
+
+  const eventsForGrid: ScheduleEvent[] = project.events.map((e) => ({
+    id: e.id,
+    title: e.title,
+    description: e.description ?? null,
+    startDate: e.startDate,
+    endDate: e.endDate ?? null,
+    status: e.status,
+    percentComplete: e.percentComplete,
+    priority: e.priority ?? 0,
+    assignee: (e as Event).assignee ?? null,
+    parentId: null,
+    predecessorIds: (e as Event).predecessorIds ?? [],
+  }))
+
   return (
     <div className="container mx-auto px-4 py-8">
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
         <h1 className="text-2xl font-bold">Project Schedule</h1>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           {project.events.length > 0 && (
-            <ScheduleExportPDF 
-              events={project.events} 
-              projectName={project.name} 
-              projectId={project.id} 
-            />
+            <>
+              <div className="flex rounded-lg border border-gray-200 p-0.5 bg-gray-50">
+                <button
+                  type="button"
+                  onClick={() => setView("grid")}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition ${view === "grid" ? "bg-white shadow text-blue-600" : "text-gray-600 hover:text-gray-900"}`}
+                  title="Sheet view"
+                >
+                  <LayoutGrid className="h-4 w-4" />
+                  Grid
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setView("gantt")}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition ${view === "gantt" ? "bg-white shadow text-blue-600" : "text-gray-600 hover:text-gray-900"}`}
+                  title="Timeline view"
+                >
+                  <GanttChartIcon className="h-4 w-4" />
+                  Gantt
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setView("list")}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition ${view === "list" ? "bg-white shadow text-blue-600" : "text-gray-600 hover:text-gray-900"}`}
+                  title="List view"
+                >
+                  <List className="h-4 w-4" />
+                  List
+                </button>
+              </div>
+              <ScheduleExportPDF
+                events={project.events}
+                projectName={project.name}
+                projectId={project.id}
+              />
+            </>
           )}
           <Link
             href={`/projects/${params.id}/schedule/new`}
             className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
-            Add Event
+            Add task
           </Link>
         </div>
       </div>
 
       {project.events.length === 0 ? (
         <div className="text-center py-12">
-          <h3 className="text-lg font-medium text-gray-900 mb-2">No events scheduled</h3>
-          <p className="text-gray-500 mb-4">Add your first event to get started</p>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">No tasks yet</h3>
+          <p className="text-gray-500 mb-4">Add your first task to keep the project on track</p>
           <Link
             href={`/projects/${params.id}/schedule/new`}
             className="text-blue-600 hover:text-blue-700"
           >
-            Add your first event →
+            Add your first task →
           </Link>
         </div>
+      ) : view === "grid" ? (
+        <ScheduleGrid
+          events={eventsForGrid}
+          projectId={project.id}
+          onEventsChange={refreshData}
+        />
+      ) : view === "gantt" ? (
+        <div className="mb-8">
+          <p className="text-sm text-gray-500 mb-2">Drag bars to move; drag left/right edges to resize. Drag vertically to reorder.</p>
+          <GanttChart
+            events={project.events.map((e) => ({
+              id: e.id,
+              title: e.title,
+              description: e.description ?? null,
+              startDate: e.startDate,
+              endDate: e.endDate ?? null,
+              status: e.status,
+              percentComplete: e.percentComplete,
+              priority: e.priority ?? 0,
+              assignee: (e as Event).assignee ?? undefined,
+            }))}
+            projectId={project.id}
+          />
+        </div>
       ) : (
-        <div className="space-y-8">
-          {/* Gantt Chart View */}
-          <div className="mb-8">
-            <h2 className="text-xl font-semibold mb-4">Timeline View</h2>
-            <GanttChart events={project.events} projectId={project.id} />
-          </div>
-
-          {/* List View */}
-          <div>
-            <h2 className="text-xl font-semibold mb-4">List View</h2>
-            {Object.entries(groupedEvents).map(([monthYear, events]) => (
-              <div key={monthYear} className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
-                <h3 className="text-lg font-medium mb-4">{monthYear}</h3>
-                <div className="space-y-4">
-                  {events.map((event) => (
-                    <EventListItem
-                      key={event.id}
-                      event={event}
-                      projectId={project.id}
-                      onUpdate={(eventId, percentComplete) => {
-                        // Refresh the page data
-                        router.refresh()
-                      }}
-                      onDelete={(eventId) => {
-                        // Refresh the page data
-                        router.refresh()
-                      }}
-                    />
-                  ))}
-                </div>
+        <div>
+          {Object.entries(groupedEvents).map(([monthYear, events]) => (
+            <div key={monthYear} className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
+              <h3 className="text-lg font-medium mb-4">{monthYear}</h3>
+              <div className="space-y-4">
+                {events.map((event) => (
+                  <EventListItem
+                    key={event.id}
+                    event={event}
+                    projectId={project.id}
+                    onUpdate={() => router.refresh()}
+                    onDelete={() => router.refresh()}
+                  />
+                ))}
               </div>
-            ))}
-          </div>
+            </div>
+          ))}
         </div>
       )}
     </div>

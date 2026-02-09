@@ -13,6 +13,7 @@ type User = {
 
 type AuthContextType = {
   user: User | null
+  loading: boolean
   login: (user: User) => void
   logout: () => void
   hasPermission: (permission: Permission) => boolean
@@ -27,6 +28,7 @@ const API_BASE_URL = typeof window !== 'undefined'
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     // Check if user is logged in on initial load
@@ -39,6 +41,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       } catch (error) {
         console.error("Error checking login status:", error)
+      } finally {
+        setLoading(false)
       }
     }
     checkLoggedIn()
@@ -68,6 +72,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     <AuthContext.Provider
       value={{
         user,
+        loading,
         login,
         logout,
         hasPermission: checkPermission,

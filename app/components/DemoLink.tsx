@@ -7,10 +7,10 @@ import { Ruler, Square, Settings, ZoomIn } from "lucide-react";
 import { useAuth } from "@/app/contexts/AuthContext";
 
 export default function DemoLink() {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
 
-  // Don't render the demo link if user is signed in
-  if (user) {
+  // Don't render the demo link if user is signed in or still loading
+  if (user || loading) {
     return null;
   }
   return (

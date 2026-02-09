@@ -16,9 +16,10 @@ export async function GET(
       where: {
         projectId: params.id
       },
-      orderBy: {
-        startDate: 'asc'
-      }
+      orderBy: [
+        { priority: 'asc' },
+        { startDate: 'asc' }
+      ]
     })
 
     return NextResponse.json(events)
@@ -39,7 +40,7 @@ export async function POST(
     }
 
     const body = await req.json()
-    const { title, description, startDate, endDate, status, priority, percentComplete } = body
+    const { title, description, startDate, endDate, status, priority, percentComplete, assignee, parentId, predecessorIds } = body
 
     // Validate required fields
     if (!title || !startDate) {
@@ -63,8 +64,11 @@ export async function POST(
         startDate: new Date(startDate),
         endDate: endDate ? new Date(endDate) : null,
         status: status || "Scheduled",
-        priority: priority || 0,
-        percentComplete: percentComplete || 0,
+        priority: priority ?? 0,
+        percentComplete: percentComplete ?? 0,
+        assignee: assignee ?? null,
+        parentId: parentId ?? null,
+        predecessorIds: Array.isArray(predecessorIds) ? predecessorIds : [],
         projectId: params.id
       }
     })
